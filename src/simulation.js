@@ -1,3 +1,4 @@
+import { TOUCH_REGIONS } from "./touch.js";
 export const TAU = Math.PI * 2;
 export const WORLD = {
   length: 960,
@@ -213,13 +214,18 @@ export class Ecosystem {
         Math.max(0, p.genes[6] - p.genes[7]) * 0.07,
     );
   }
-  observe(u, v, novelty, dt = 1) {
+  observe(u, v, novelty, dt = 1, heading = 0) {
     this.novelty = novelty;
     for (let i = 0; i < this.exposure.length; i++)
       this.exposure[i] *= Math.exp(-dt / 75);
     for (let a = 1; a <= 3; a++)
       for (let b = -1; b <= 1; b++) {
-        const p = this.patch(Math.floor(u / 16) + a, Math.floor(v / 16) + b);
+        const p = this.patch(
+          Math.floor(u / 16) +
+            Math.round(a * Math.cos(heading) - b * Math.sin(heading)),
+          Math.floor(v / 16) +
+            Math.round(a * Math.sin(heading) + b * Math.cos(heading)),
+        );
         this.exposure[p.form] += dt / 9;
         this.formReward[p.form] += (novelty - this.formReward[p.form]) * 0.025;
       }
@@ -235,12 +241,18 @@ export class Ecosystem {
     return weights.length - 1;
   }
 
-  evolve(u, v, reward = 0.5, force = false) {
+  evolve(u, v, reward = 0.5, force = false, heading = 0) {
     if (this.frozen && !force) return [];
     const changed = [];
     for (let i = 0; i < (force ? 20 : 8); i++) {
-      const a = Math.floor(u / 16) + 1 + Math.floor(this.rng() * 6),
-        b = Math.floor(v / 16) + Math.floor(this.rng() * 7) - 3;
+      const forward = 1 + Math.floor(this.rng() * 6),
+        side = Math.floor(this.rng() * 7) - 3,
+        a =
+          Math.floor(u / 16) +
+          Math.round(forward * Math.cos(heading) - side * Math.sin(heading)),
+        b =
+          Math.floor(v / 16) +
+          Math.round(forward * Math.sin(heading) + side * Math.cos(heading));
       const parent = this.patch(a, b),
         neighbor = this.patch(a + 1, b + (this.rng() > 0.5 ? 1 : -1));
       const candidate = {
@@ -321,12 +333,17 @@ export class Ecosystem {
     }
     return changed;
   }
-  population(u, v) {
+  population(u, v, heading = 0) {
     const totals = Array(SPECIES.length).fill(0);
     let fitness = 0;
     for (let a = 0; a < 5; a++)
       for (let b = -2; b <= 2; b++) {
-        const p = this.patch(Math.floor(u / 16) + a, Math.floor(v / 16) + b);
+        const p = this.patch(
+          Math.floor(u / 16) +
+            Math.round(a * Math.cos(heading) - b * Math.sin(heading)),
+          Math.floor(v / 16) +
+            Math.round(a * Math.sin(heading) + b * Math.cos(heading)),
+        );
         p.genes.forEach((g, i) => (totals[i] += g));
         fitness += this.score(p, 0.5);
       }
@@ -348,14 +365,47 @@ export class FlyBrain {
     this.right = 0.5;
     this.rate = 0;
     this.steer = 0;
+    this.vertical = 0;
+    this.up = this.down = 0.5;
+    this.quadrants = [0, 0, 0, 0];
     this.history = [];
     this.spikeHistory = [];
     this.adaptation = 0;
     this.familiarity = new Float32Array(32);
     this.novelty = 1;
     this.initialized = false;
+    this.touchVoltage = new Float32Array(44);
+    this.touchDrive = new Float32Array(44);
+    this.touchSpikes = new Uint8Array(44);
+    this.touchCount = 0;
+    this.lastTouch = null;
+    this.touchAge = 100;
+    this.reflex = 0;
+    this.pain = 0;
+  }
+  touch(region, intensity = 1) {
+    const group = TOUCH_REGIONS.indexOf(region);
+    if (group < 0) return;
+    for (let j = 0; j < 4; j++) {
+      this.touchDrive[group * 4 + j] = Math.min(
+        2,
+        this.touchDrive[group * 4 + j] + intensity,
+      );
+      this.touchVoltage[group * 4 + j] += 0.7 * intensity;
+    }
+    this.touchCount++;
+    this.lastTouch = region;
+    this.touchAge = 0;
+    this.pain = Math.min(1, this.pain + intensity * 0.6);
+    this.reflex = region.startsWith("left")
+      ? 1
+      : region.startsWith("right")
+        ? -1
+        : (this.right >= this.left ? 1 : -1) * 0.6;
   }
   step(pixels, dt = 0.1) {
+    const quadrants = [0, 0, 0, 0],
+      counts = [0, 0, 0, 0];
     let left = 0,
       right = 0,
       countL = 0,
@@ -391,6 +441,10 @@ export class FlyBrain {
         spikeCount++;
       }
       const reward = input * this.weights[i];
+      // readRenderTargetPixels is bottom-up; screen top is y >= 15.
+      const quadrant = (y >= 15 ? 0 : 2) + (x >= 15 ? 1 : 0);
+      quadrants[quadrant] += reward;
+      counts[quadrant]++;
       if (x < 15) {
         left += reward;
         countL++;
@@ -408,17 +462,41 @@ export class FlyBrain {
       );
       this.previous[i] = light;
     }
+    this.touchAge += dt;
+    this.reflex *= Math.exp(-dt / 0.7);
+    this.pain *= Math.exp(-dt / 1.3);
+    for (let i = 0; i < 44; i++) {
+      this.touchVoltage[i] =
+        this.touchVoltage[i] * Math.exp(-dt / 0.12) +
+        this.touchDrive[i] * dt * 8;
+      this.touchSpikes[i] =
+        this.touchVoltage[i] > 0.65 + (i % 4) * 0.06 ? 1 : 0;
+      if (this.touchSpikes[i]) {
+        spikeCount++;
+        this.touchVoltage[i] = 0;
+      }
+      this.touchDrive[i] *= Math.exp(-dt / 0.35);
+    }
     for (let i = 0; i < 32; i++) this.familiarity[i] *= Math.exp(-dt / 45);
     this.novelty +=
       (clamp((novelty / 892) * 14) - this.novelty) * (1 - Math.exp(-dt / 1.4));
     this.initialized = true;
+    this.quadrants = quadrants.map((value, i) => value / counts[i]);
+    this.up = (this.quadrants[0] + this.quadrants[1]) / 2;
+    this.down = (this.quadrants[2] + this.quadrants[3]) / 2;
+    this.vertical +=
+      (clamp((this.up - this.down) * 14, -1, 1) - this.vertical) * 0.12;
     this.left = left / countL;
     this.right = right / countR;
-    const target = clamp((this.left + this.right) * 0.65 + this.novelty * 0.4);
+    const target = clamp(
+      (this.left + this.right) * 0.65 + this.novelty * 0.4 - this.pain * 0.25,
+    );
     this.dopamine += (target - this.dopamine) * 0.1;
     this.rate += (spikeCount / dt - this.rate) * 0.18;
     this.steer +=
-      (clamp((this.right - this.left) * 14, -1, 1) - this.steer) * 0.12;
+      (clamp((this.right - this.left) * 14 + this.reflex * 0.65, -1, 1) -
+        this.steer) *
+      0.12;
     this.history.push(this.dopamine);
     this.spikeHistory.push(spikeCount / 892);
     if (this.history.length > 100) {

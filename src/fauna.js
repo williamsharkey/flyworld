@@ -43,12 +43,16 @@ export class Fauna {
       h: 2 + this.rng() * 7,
     }));
   }
-  update(dt, u, v, centerV, ecosystem) {
+  update(dt, u, v, centerV, ecosystem, heading = 0) {
     this.clock += dt;
     const cells = new Map();
     const key = (u, v) =>
       `${wrap(Math.floor(u / 16), 60)},${wrap(Math.floor(v / 16), 20)}`;
     for (const a of this.agents) {
+      if (a.deadUntil > this.clock) {
+        a.visible = false;
+        continue;
+      }
       const k = key(a.u, a.v);
       if (!cells.has(k)) cells.set(k, []);
       cells.get(k).push(a);
@@ -73,12 +77,37 @@ export class Fauna {
       count++;
     };
     for (const a of this.agents) {
-      if (
-        delta(a.u, u, WORLD.length) < -22 ||
-        Math.abs(delta(a.v, v, WORLD.width)) > 78
-      ) {
-        a.u = wrap(u + 85 + this.rng() * 35, WORLD.length);
-        a.v = wrap(v + (this.rng() - 0.5) * 100, WORLD.width);
+      if (a.deadUntil > this.clock) {
+        a.visible = false;
+        continue;
+      }
+      if (a.deadUntil) {
+        a.deadUntil = 0;
+        const side = (this.rng() - 0.5) * 80;
+        a.u = wrap(
+          u + Math.cos(heading) * 90 - Math.sin(heading) * side,
+          WORLD.length,
+        );
+        a.v = wrap(
+          v + Math.sin(heading) * 90 + Math.cos(heading) * side,
+          WORLD.width,
+        );
+      }
+      const relU = delta(a.u, u, WORLD.length),
+        relV = delta(a.v, v, WORLD.width),
+        forward = relU * Math.cos(heading) + relV * Math.sin(heading),
+        side = relV * Math.cos(heading) - relU * Math.sin(heading);
+      if (forward < -22 || forward > 150 || Math.abs(side) > 78) {
+        const ahead = 85 + this.rng() * 35,
+          lateral = (this.rng() - 0.5) * 100;
+        a.u = wrap(
+          u + Math.cos(heading) * ahead - Math.sin(heading) * lateral,
+          WORLD.length,
+        );
+        a.v = wrap(
+          v + Math.sin(heading) * ahead + Math.cos(heading) * lateral,
+          WORLD.width,
+        );
       }
       let desiredU = Math.sin(this.clock * 0.35 + a.phase) * 0.7,
         desiredV = Math.cos(this.clock * 0.4 + a.phase) * 0.8;
@@ -139,7 +168,11 @@ export class Fauna {
       a.u = wrap(a.u + a.vu * dt, WORLD.length);
       a.v = wrap(a.v + a.vv * dt, WORLD.width);
       const p = ecosystem.patch(Math.floor(a.u / 16), Math.floor(a.v / 16));
-      if (p.genes[[4, 7, 6, 5, 4, 7][a.kind]] < 0.13) continue;
+      if (p.genes[[4, 7, 6, 5, 4, 7][a.kind]] < 0.13) {
+        a.visible = false;
+        continue;
+      }
+      a.visible = true;
       const ground = Math.max(WORLD.seaLevel, this.height(a.u, a.v));
       const alt =
         ground +
@@ -148,8 +181,16 @@ export class Fauna {
           : a.kind === 4
             ? 0.4
             : a.h + Math.sin(this.clock * 2 + a.phase) * 0.65);
+      a.altitude = alt;
       const pos = this.surface(a.u, a.v, alt, u, centerV),
-        yaw = Math.atan2(a.vv, -a.vu),
+        next = this.surface(
+          a.u + a.vu * 0.1,
+          a.v + a.vv * 0.1,
+          alt,
+          u,
+          centerV,
+        ),
+        yaw = Math.atan2(next.x - pos.x, next.z - pos.z),
         c = palettes[a.kind],
         size = a.kind === 2 ? 1.25 : a.kind === 1 ? 0.6 : 0.45;
       put(pos, size, 0.4 * size, size * 1.8, c, yaw);

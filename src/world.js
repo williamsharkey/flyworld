@@ -1,4 +1,13 @@
+import { VoxelTransitions, voxelKey } from "./transitions.js";
 import * as THREE from "three";
+import {
+  CollisionField,
+  DamageField,
+  FlightPhysics,
+  twist,
+  decorativeScale,
+} from "./physics.js";
+import { Arcade } from "./arcade.js";
 import { Exploration } from "./exploration.js";
 import { Fauna } from "./fauna.js";
 import { buildPrimitive } from "./primitives.js";
@@ -17,9 +26,22 @@ const palettes = {
   coral: ["#ad94b2", "#c1a2bb", "#d0b1c8", "#a888ac"],
   rock: ["#c4bba0", "#b2af99", "#d4c8a8"],
 };
-export function surface(u, v, h = 0, centerU = 0, centerV = 0) {
-  const a = delta(u, centerU, WORLD.length) / R,
-    b = delta(v, centerV, WORLD.width) / r;
+export function surface(
+  u,
+  v,
+  h = 0,
+  centerU = 0,
+  centerV = 0,
+  heading = 0,
+  pivotV = centerV,
+) {
+  const rotated = twist(
+    delta(u, centerU, WORLD.length),
+    delta(v, pivotV, WORLD.width),
+    heading,
+  );
+  const a = rotated.u / R,
+    b = (rotated.v + delta(pivotV, centerV, WORLD.width)) / r;
   return new THREE.Vector3(
     (r + h) * Math.sin(b),
     (major + (r + h) * Math.cos(b)) * Math.cos(a) - R,
@@ -33,14 +55,20 @@ export class FlyWorld {
     this.v = 160;
     this.centerV = this.v;
     this.simTime = 0;
+    this.wallTime = 0;
     this.cameraMode = 0;
     this.chunks = new Map();
     this.dirty = new Set();
     this.frameCount = 0;
+    this.collisions = new CollisionField();
+    this.damage = new DamageField();
+    this.events = [];
+    this.heading = 0;
     this.exploration = new Exploration();
     this.exploration.record(this.u, this.v);
     this.altitude = Math.max(WORLD.seaLevel, this.height(this.u, this.v)) + 7;
     this.cameraAltitude = this.altitude;
+    this.physics = new FlightPhysics(this.u, this.v, this.altitude);
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -72,18 +100,22 @@ export class FlyWorld {
       uCenter: { value: this.u },
       vCenter: { value: this.v },
       uTime: { value: 0 },
+      uWallTime: { value: 0 },
       uFlyV: { value: this.v },
+      uHeading: { value: 0 },
     };
     this.material = new THREE.MeshLambertMaterial();
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms);
       shader.vertexShader =
-        "uniform float uCenter; uniform float vCenter; uniform float uTime; uniform float uFlyV; attribute vec4 instanceRoot; varying float vWater;\n" +
+        "uniform float uCenter; uniform float vCenter; uniform float uTime; uniform float uFlyV; uniform float uHeading; attribute vec4 instanceRoot; attribute vec3 instanceLife; uniform float uWallTime; varying float vWater;\n" +
         shader.vertexShader;
       shader.vertexShader = shader.vertexShader.replace(
         "#include <project_vertex>",
         `
-    vec4 wp = vec4(transformed, 1.0);
+    float lifeT=clamp((uWallTime-instanceLife.x)/0.4,0.0,1.0);
+    float lifeScale=mix(instanceLife.y,instanceLife.z,lifeT*lifeT*(3.0-2.0*lifeT));
+    vec4 wp = vec4(transformed*lifeScale, 1.0);
     #ifdef USE_INSTANCING
     wp = instanceMatrix * wp;
     #endif
@@ -91,7 +123,11 @@ export class FlyWorld {
     if(vWater>.5)wp.y+=sin(wp.x*.6-wp.z*.45+uTime*1.6)*.06;
     if(instanceRoot.w>2.5)wp.y+=sin(uTime*1.5+instanceRoot.x*.15)*.8;
     float du = mod(-wp.z-uCenter+480.0,960.0)-480.0;
-    float dv = mod(wp.x-vCenter+160.0,320.0)-160.0;
+    float dv = mod(wp.x-uFlyV+160.0,320.0)-160.0;
+    float radius=length(vec2(du,dv));float t=clamp((radius-96.0)/40.0,0.0,1.0);
+    float angle=uHeading*(1.0-t*t*(3.0-2.0*t));
+    vec2 rotated=vec2(du*cos(angle)+dv*sin(angle),dv*cos(angle)-du*sin(angle));
+    du=rotated.x;dv=rotated.y+mod(uFlyV-vCenter+160.0,320.0)-160.0;
     float a = du / ${R.toFixed(8)};
     float b = dv / ${r.toFixed(8)};
     float rr = ${r.toFixed(8)} + wp.y;
@@ -117,10 +153,24 @@ export class FlyWorld {
     this.createSky();
     this.createFly();
     this.createParticles();
-    this.fauna = new Fauna(this.scene, surface, (u, v) => this.height(u, v));
+    this.fauna = new Fauna(
+      this.scene,
+      (u, v, h) => this.project(u, v, h),
+      (u, v) => this.height(u, v),
+    );
+    this.arcade = new Arcade(this);
+    this.transitions = new VoxelTransitions(this);
     this.updateChunks(true);
     this.update(0, 0);
     window.addEventListener("resize", () => this.resize());
+  }
+  project(u, v, h) {
+    return surface(u, v, h, this.u, this.centerV, this.heading, this.v);
+  }
+  consumeEvents() {
+    const events = this.events;
+    this.events = [];
+    return events;
   }
   createSky() {
     const sky = new THREE.Mesh(
@@ -345,6 +395,12 @@ export class FlyWorld {
     this.simTime = 0;
     this.altitude = Math.max(WORLD.seaLevel, this.height(this.u, this.v)) + 7;
     this.cameraAltitude = this.altitude;
+    this.heading = 0;
+    this.physics = new FlightPhysics(this.u, this.v, this.altitude);
+    this.damage = new DamageField();
+    this.arcade.reset();
+    this.transitions.clear();
+    this.events = [];
     this.exploration.reset();
     this.exploration.record(this.u, this.v);
     this.fauna.reset(this.u, this.v);
@@ -353,6 +409,9 @@ export class FlyWorld {
     this.update(0, 0);
   }
   makeChunk(cu, cv, old) {
+    const prior = new Map(
+      (old?.userData.boxes || []).map((b) => [voxelKey(b), b]),
+    );
     const patch = this.ecosystem.patch(cu, cv),
       rng = random(patch.seed),
       genes = patch.genes;
@@ -365,10 +424,53 @@ export class FlyWorld {
         "instanceRoot",
         new THREE.InstancedBufferAttribute(new Float32Array(2200 * 4), 4),
       );
+    if (!mesh.geometry.getAttribute("instanceLife"))
+      mesh.geometry.setAttribute(
+        "instanceLife",
+        new THREE.InstancedBufferAttribute(new Float32Array(2200 * 3), 3),
+      );
+    const lives = mesh.geometry.getAttribute("instanceLife");
+    let incoming = 0;
+    const owner = this.ecosystem.key(cu, cv),
+      boxes = [];
     const roots = mesh.geometry.getAttribute("instanceRoot");
-    let root = [0, 0, 0, 0];
+    let root = [0, 0, 0, 0],
+      voxelOrdinal = 0;
     const put = (x, y, z, sx, sy, sz, c) => {
       if (mesh.count >= 2200) return;
+      // Tiny deterministic offsets separate overlapping decorative faces. Ground and water stay tiled.
+      if (root[3] !== 0 && root[3] !== 2) {
+        const k = decorativeScale(patch.seed, voxelOrdinal++);
+        sx *= k;
+        sy *= k;
+        sz *= k;
+        y += (k - 1) * 0.7;
+      }
+      let collider = {
+        u: z,
+        v: x,
+        y,
+        su: sz,
+        sv: sx,
+        sy,
+        kind: root[3],
+        rootV: root[0],
+        root: [...root],
+        color: c,
+        owner,
+        index: mesh.count,
+      };
+      collider = this.damage.apply(owner, collider);
+      if (!collider) return;
+      y = collider.y;
+      sy = collider.sy;
+      const key = voxelKey(collider),
+        previous = prior.get(key);
+      collider.life = previous?.life || [this.wallTime, 0.001, 1];
+      prior.delete(key);
+      if (!previous) incoming++;
+      lives.setXYZ(mesh.count, ...collider.life);
+      boxes.push(collider);
       dummy.position.set(x, y, -z);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(sx, sy, sz);
@@ -509,6 +611,19 @@ export class FlyWorld {
           );
         }
       }
+    this.transitions.retire([...prior.values()], this.wallTime);
+    if ((incoming || prior.size) && this.wallTime > 0)
+      this.events.push({
+        type: "rearrange",
+        incoming: incoming > prior.size,
+        u: patch.u * 16 + 8,
+        v: patch.v * 16 + 8,
+        y: this.height(patch.u * 16 + 8, patch.v * 16 + 8),
+      });
+    this.collisions.remove(mesh);
+    this.collisions.replace(mesh, boxes);
+    lives.needsUpdate = true;
+    mesh.userData.boxes = boxes;
     roots.needsUpdate = true;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -521,14 +636,24 @@ export class FlyWorld {
   updateChunks(force = false) {
     const cu = Math.floor(this.u / 16),
       cv = Math.floor(this.centerV / 16),
-      token = `${cu},${cv}`;
+      token = `${cu},${cv},${Math.round(this.heading * 10)}`;
     if (token === this.chunkToken && !force && !this.dirty.size) return;
     this.chunkToken = token;
     const wanted = new Set(),
       jobs = [];
-    for (let a = -2; a <= 8; a++)
-      for (let b = -4; b <= 4; b++) {
+    for (let a = -10; a <= 10; a++)
+      for (let b = -10; b <= 10; b++) {
+        const u = (cu + a) * 16 + 8,
+          v = (cv + b) * 16 + 8,
+          rotated = twist(
+            delta(u, this.u, WORLD.length),
+            delta(v, this.v, WORLD.width),
+            this.heading,
+          );
+        if (rotated.u < -42 || rotated.u > 146 || Math.abs(rotated.v) > 82)
+          continue;
         const key = this.ecosystem.key(cu + a, cv + b);
+        if (wanted.has(key)) continue;
         wanted.add(key);
         if (!this.chunks.has(key) || this.dirty.has(key))
           jobs.push([key, cu + a, cv + b]);
@@ -545,7 +670,9 @@ export class FlyWorld {
         this.makeChunk(a, b, this.chunks.get(key) || pool.pop()),
       );
     for (const mesh of pool) {
+      this.transitions.retire(mesh.userData.boxes || [], this.wallTime);
       this.scene.remove(mesh);
+      this.collisions.remove(mesh);
       mesh.geometry.dispose();
       mesh.dispose();
     }
@@ -559,38 +686,38 @@ export class FlyWorld {
           this.dirty.add(this.ecosystem.key(a + x, b + y));
     }
   }
-  update(dt, steer, cameraDt = dt) {
-    this.simTime += dt;
-    this.u = wrap(
-      this.u + (WORLD.length / WORLD.lapSeconds) * dt,
-      WORLD.length,
-    );
-    this.v = wrap(this.v + steer * 3.4 * dt, WORLD.width);
-    this.centerV = wrap(
-      this.centerV +
-        delta(this.v, this.centerV, WORLD.width) * (1 - Math.exp(-dt / 1.8)),
-      WORLD.width,
-    );
+  update(dt, steer, cameraDt = dt, vertical = 0) {
+    this.wallTime += cameraDt;
+    this.collisions.wallTime = this.wallTime;
+    this.uniforms.uWallTime.value = this.wallTime;
+    this.transitions.update(this.wallTime);
+    const previousAltitude = this.altitude;
+    if (dt > 0) {
+      this.events.push(
+        ...this.physics.step(
+          dt,
+          steer,
+          this.collisions,
+          (u, v) => this.height(u, v),
+          this.simTime,
+          vertical,
+        ),
+      );
+      this.simTime += dt;
+      this.u = this.physics.u;
+      this.v = this.physics.v;
+      this.altitude = this.physics.altitude;
+      this.heading = this.physics.heading;
+      this.centerV = wrap(this.v - this.physics.cameraSide, WORLD.width);
+      this.exploration.record(this.u, this.v);
+    }
     this.uniforms.uCenter.value = this.u;
     this.uniforms.vCenter.value = this.centerV;
     this.uniforms.uTime.value = this.simTime;
     this.uniforms.uFlyV.value = this.v;
+    this.uniforms.uHeading.value = this.heading;
     this.updateChunks();
-    if (dt) this.exploration.record(this.u, this.v);
-    const ground = Math.max(WORLD.seaLevel, this.height(this.u, this.v));
-    const ahead = Math.max(
-      ground,
-      this.height(this.u + 9, this.v + steer * 3),
-      this.height(this.u + 17, this.v + steer * 5),
-    );
-    const desiredAltitude = ahead + 7,
-      previousAltitude = this.altitude;
-    this.altitude = Math.max(
-      ground + 3,
-      this.altitude +
-        (desiredAltitude - this.altitude) * (1 - Math.exp(-dt / 1.2)),
-    );
-    const pos = surface(this.u, this.v, this.altitude, this.u, this.centerV);
+    const pos = this.project(this.u, this.v, this.altitude);
     this.observer.position.copy(pos);
     this.fly.position.set(
       Math.sin(this.simTime * 1.7) * 0.1,
@@ -605,6 +732,7 @@ export class FlyWorld {
     this.fly.rotation.x =
       clamp(-climb * 0.035, -0.22, 0.22) + Math.sin(this.simTime * 2.3) * 0.045;
     this.abdomen.rotation.x = Math.sin(this.simTime * 3.3 - 0.4) * 0.07;
+    this.wingPhase = this.simTime * TAU * 11;
     this.wings.forEach(
       (wing, i) =>
         (wing.rotation.z =
@@ -639,7 +767,17 @@ export class FlyWorld {
       Math.max(WORLD.seaLevel, this.altitude - 18),
       -45,
     );
-    this.fauna.update(dt, this.u, this.v, this.centerV, this.ecosystem);
+    this.fauna.update(
+      dt,
+      this.u,
+      this.v,
+      this.centerV,
+      this.ecosystem,
+      this.heading,
+    );
+    this.arcade.update(dt, cameraDt);
+    if (this.dirty.size) this.updateChunks();
+    this.transitions.update(this.wallTime);
     this.particles.rotation.y = Math.sin(this.simTime * 0.025) * 0.1;
     this.particles.position.y = Math.sin(this.simTime * 0.25) * 0.3;
   }

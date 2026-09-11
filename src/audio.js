@@ -1,10 +1,11 @@
+import { Ambience } from "./ambience.js";
 import { SCORE, scoreEvents } from "./score.js";
 import { random } from "./simulation.js";
 
 /** Original MIDI-style score rendered by an analog-inspired Web Audio synth. */
 export class DreamSynth {
   constructor() {
-    this.enabled = false;
+    this.enabled = true;
     this.volume = 0.5;
     this.paused = false;
     this.events = scoreEvents();
@@ -20,6 +21,7 @@ export class DreamSynth {
     limiter.knee.value = 14;
     limiter.ratio.value = 5;
     this.master.connect(limiter).connect(ctx.destination);
+    this.ambience = new Ambience(ctx, this.master);
     this.bus = ctx.createGain();
     this.bus.connect(this.master);
     const reverb = ctx.createConvolver(),
@@ -68,7 +70,7 @@ export class DreamSynth {
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 256;
     this.master.connect(this.analyser);
-    this.origin = ctx.currentTime + 0.12;
+    this.origin = null;
     this.eventIndex = 0;
     this.loop = 0;
     this.timer = setInterval(() => this.schedule(), 40);
@@ -76,18 +78,19 @@ export class DreamSynth {
   }
   schedule() {
     if (!this.ctx || this.ctx.state !== "running") return;
+    // Start the score only when audio actually unlocks. Keep a generous buffer
+    // for terrain rebuilds, and recover sustained notes after a delayed timer.
+    if (this.origin === null) this.origin = this.ctx.currentTime + 0.12;
     const beatSeconds = 60 / SCORE.bpm;
     while (true) {
       const event = this.events[this.eventIndex],
         time =
           this.origin + (this.loop * SCORE.beats + event.beat) * beatSeconds;
-      if (time > this.ctx.currentTime + 0.24) break;
-      if (time >= this.ctx.currentTime - 0.02)
-        this.note(
-          event,
-          Math.max(this.ctx.currentTime, time),
-          event.duration * beatSeconds,
-        );
+      if (time > this.ctx.currentTime + 1.2) break;
+      const remaining =
+        event.duration * beatSeconds - Math.max(0, this.ctx.currentTime - time);
+      if (remaining > 0.1)
+        this.note(event, Math.max(this.ctx.currentTime, time), remaining);
       this.eventIndex++;
       if (this.eventIndex === this.events.length) {
         this.eventIndex = 0;
@@ -145,6 +148,16 @@ export class DreamSynth {
     };
     this.scheduled++;
   }
+  async arm() {
+    await this.init();
+    if (this.ctx.state === "running") await this.sync();
+  }
+  environment(world, bias) {
+    this.ambience?.update(world, bias);
+  }
+  event(event, world) {
+    this.ambience?.event(event, world);
+  }
   async setEnabled(enabled) {
     await this.init();
     this.enabled = enabled;
@@ -155,10 +168,11 @@ export class DreamSynth {
     const active = this.enabled && !this.paused && !document.hidden;
     if (active) {
       await this.ctx.resume();
+      this.schedule();
       this.master.gain.setTargetAtTime(
         this.volume * 0.85,
         this.ctx.currentTime,
-        0.7,
+        1.8,
       );
     } else {
       this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.2);
@@ -199,6 +213,8 @@ export class DreamSynth {
       scheduled: this.scheduled,
       rms,
       volume: this.volume,
+      ambientRms: this.ambience?.rms || 0,
+      soundEvents: this.ambience?.events || 0,
     };
   }
 }

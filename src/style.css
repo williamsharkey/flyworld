@@ -1353,3 +1353,53 @@ input[type="range"] {
     display: none;
   }
 }
+#arcade-reticle {
+  position: fixed;
+  top: 51%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border: 1px solid #f5d7a660;
+  border-radius: 2px;
+  z-index: 2;
+  box-shadow: 0 0 18px #ffbf6922;
+}
+#arcade-reticle:before,
+#arcade-reticle:after {
+  content: "";
+  position: absolute;
+  background: #ffe1a889;
+}
+#arcade-reticle:before {
+  height: 1px;
+  width: 24px;
+  left: -5px;
+  top: 7px;
+}
+#arcade-reticle:after {
+  width: 1px;
+  height: 24px;
+  top: -5px;
+  left: 7px;
+}
+
+.eye-quadrants {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  pointer-events: none;
+}
+.eye-quadrants span {
+  padding: 5px;
+  font: 7px var(--mono, monospace);
+  color: #fff8df;
+  border-right: 1px solid #fff4;
+  border-bottom: 1px solid #fff4;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: end;
+}
