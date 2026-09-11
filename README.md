@@ -4,11 +4,13 @@ A living Three.js screensaver: a fruit fly explores a toroidal voxel world that 
 
 **[Run Flyworld](https://williamsharkey.github.io/flyworld/)** · [Source](https://github.com/williamsharkey/flyworld)
 
+The screen contains only the world, compact controls, and a small translucent exploration map. Branding, credits, taglines, explanatory panels, and neural dashboards are removed. The neural model still runs and exposes four-quadrant telemetry through diagnostics.
+
 No installation is needed to play. Every visitor gets an independent simulation in their browser.
 
 ## What happens
 
-- **Natural flight:** a segmented fly with veined, translucent wings flaps, banks, pitches, and gently bobs. It anticipates terrain rises and climbs above them. Smooth attention changes steer and climb. Beyond ±4% steering bias, the surface pivots under the fly, with a gentle camera catch-up. Eleven swept body/leg/wing probes detect voxels and trigger backward/upward recoil; contacts excite 44 region-specific tactile proxy neurons.
+- **Natural flight:** a segmented fly with veined, translucent wings flaps, banks, pitches, and gently bobs. It anticipates terrain rises and climbs above them. Smooth attention changes steer and climb. Beyond ±4% steering bias, the surface pivots under the fly, with a gentle camera catch-up. Eleven swept body/leg/wing probes detect voxels and trigger backward recoil plus a small upward nudge; contacts excite 44 region-specific tactile proxy neurons. Regular upward impulses are one fifth of the earlier strength and limited to one every 0.875 real seconds. Three contacts within two real seconds enable obstacle clearance. A stronger recovery impulse is bounded to 4.8 and can occur only once every ten real seconds; it never increases the altitude target or stacks on landing contacts.
 - **Twelve landscape grammars:** amber groves, coral gardens, crystal fans, giant mushrooms, stone arches, floating islands, spiral towers, flower meadows, basalt pillars, reed marshes, luminous rings, and branching ruins. Whole patches can change form. Individual incoming and outgoing cubes grow or shrink around their own centers with a 0.4-second smoothstep, timed independently of simulation speed. Unchanged cubes retain their identity. GPU attributes animate the scale; a bounded instanced batch holds outgoing cubes. Colliders follow the animated sizes. Tiny deterministic size offsets separate overlapping decorative faces.
 - **Active fauna:** 90 bounded agents include hunters, flocking flies, grazers, pollinators, surface skimmers, and drifting insects. Hunters pursue nearby prey; flies separate, align, and flee. A periodic spatial hash limits neighbor searches. These are stylized ecological behaviors, not a biological predator model.
 - **Evolving topography:** elevation and roughness are inherited traits. Continuous periodic terrain is quantized into voxel steps. Terrain below a common water level forms rivers and pools; elevated regions become hills and rocky peaks. Water has animated ripples. Water is a level-set surface, not a fluid or erosion simulation.
@@ -21,7 +23,7 @@ The eye camera renders the actual scene to a 30×30 target. Exactly 892 visual s
 
 Color familiarity builds with exposure and decays over time. Repeated views therefore lose salience; unfamiliar colors and moving objects can restore novelty. The ecosystem also remembers which landscape forms the fly has recently seen and their associated sensory novelty. Offspring preferentially explore less-experienced forms, and periodic immigrants help avoid a fixed monoculture.
 
-**This demo does not load or simulate the measured FlyEM connectome.** The 165,122 real neurons and 10,228,000 measured synapses described by [fruitflydev/flycoinrh](https://github.com/fruitflydev/flycoinrh) belong to the separate reference project. This browser demo uses a deliberately smaller model, identifies it as a proxy in the interface, and makes no claim that its reward measures pleasure. No upstream connectome data or code is bundled.
+**This demo does not load or simulate the measured FlyEM connectome.** The 165,122 real neurons and 10,228,000 measured synapses described by [fruitflydev/flycoinrh](https://github.com/fruitflydev/flycoinrh) belong to the separate reference project. This browser demo uses a deliberately smaller model, documents its proxy model here, and makes no claim that its reward measures pleasure. No upstream connectome data or code is bundled.
 
 ## Evolution and efficiency
 
@@ -37,14 +39,15 @@ Forward coordinates wrap every 960 units and lateral coordinates every 320. The 
 
 - **Arrow keys:** smoothly add attention; left/right steer, **Up dives and Down climbs**. After 0.5 seconds without arrow input, control returns to the brain; velocity eases rather than snapping.
 - **Pause button:** pause/resume flight, evolution, brain steps, and soundtrack.
-- **Space (unadvertised in the initial UI):** surprise arcade bursts with a narrow forward lock-on cone. Shots destroy voxel objects and carve terrain, releasing smaller cube fragments. Per-patch scars persist while revisiting and rebuilding, bounded to the latest 64 nearby blast records per patch. Creatures respawn after a delay.
+- **Space (unadvertised in the initial UI):** surprise arcade bursts with a narrow forward lock-on cone. Shots destroy voxel objects and carve terrain, releasing smaller cube fragments. The reticle begins fading two seconds after the last actual burst and disappears 0.45 seconds later. Explosions send up to 360 fragments from the destroyed voxel volumes, with radial impulses, size-dependent speed, spin, gravity, drag, swept obstacle collisions, friction, and damped bounces. Up to 2,200 debris cubes persist for 3.5–6 real seconds. Fragments do not collide with one another. Per-patch scars persist while revisiting and rebuilding, bounded to the latest 64 nearby blast records per patch. Creatures respawn after a delay.
 - **Speed:** 1× → 2× → 4× → ½×.
 - **C / camera:** follow, overlook, or fly-eye view.
 - **M / Mutate:** introduce 20 new candidates ahead, including while paused.
 - **Settings:** mutation strength, evolution and visual steering toggles, music volume, MIDI download, and reseeding.
 - **Speaker:** mute/unmute music and ambience; some browsers require the first interaction before audio starts.
 - **F / expand:** screensaver mode. **Escape** returns or closes dialogs.
-- **Species:** inspect each ecological role and nearby genome share.
+
+**Firing soundtrack:** only actual Space-triggered shots activate the original 145 BPM electro / Miami-bass groove. The ambient score ducks to 12% under distorted 808 kicks, sub-bass, claps, and hats. Collision and automatic-clearance explosions never activate it. After twelve seconds in a continuous firing session, a local formant/phoneme synthesizer repeats the requested robot chant in rhythm. A three-second firing gap ends the session, stops the chant, and restores the ambient score; a new session restarts the twelve-second timer. No sampled artist recording, voice service, or downloaded speech model is used.
 
 Hidden tabs stop simulation time and suspend audio. Music keeps its own relaxed tempo when simulation speed changes.
 
@@ -57,7 +60,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. No backend, API keys, wallet, or external brain service is needed. Fonts load from Google Fonts with system fallbacks.
+Open http://localhost:5173. No backend, API keys, wallet, or external brain service is needed. The interface uses system fonts.
 
 ```sh
 npm test
@@ -80,7 +83,8 @@ The production build uses `/flyworld/` as its asset base; preview it at http://l
 - `src/physics.js` / `src/touch.js`: swept collisions, tactile regions, flight inertia, local chart twist, and bounded terrain damage.
 - `src/controls.js`: inverted vertical attention input and automatic handoff.
 - `src/transitions.js`: per-cube lifecycle scaling and bounded outgoing instances.
-- `src/arcade.js`: concealed projectile bursts, limited aim assist, and voxel fragments.
+- `src/arcade.js` / `src/debris.js`: concealed projectile bursts, limited aim assist, radial explosions, and ballistic fragments.
+- `src/combat-audio.js` / `src/robot-voice.js`: firing-only bass groove, ambient ducking, and timed formant-synthesized chant.
 - `src/ambience.js`: spatial insects, wing synchronization, water, impacts, and quiet whooshes.
 - `src/fauna.js`: spatial hashing, predator pursuit, flocking, and instanced agents.
 - `src/simulation.js`: genomes, terrain fields, selection, sensory familiarity, and spiking model.
@@ -88,4 +92,4 @@ The production build uses `/flyworld/` as its asset base; preview it at http://l
 - `src/audio.js` / `src/score.js`: synth, original score, and Standard MIDI File export.
 - `src/main.js` / `src/style.css`: simulation clock, UI, telemetry, and controls.
 
-Model tests additionally cover quadrant direction, inverted controls and handoff, swept seam collisions, recoil, tactile region mapping, local twist inversion, persistent craters, transition timing, aim cones, and audio scheduling recovery. Model tests cover seam continuity, terrain elevation, frame-independent exploration, habituation, restoration of novelty, selection diversity, neural stability, and MIDI structure. Browser checks cover free-flight telemetry, active swaps, controls, real audio output, disclosures, and responsive layout. `window.flyworld.state` exposes read-only diagnostics.
+Model tests additionally cover quadrant direction, inverted controls and handoff, swept seam collisions, recoil, tactile region mapping, local twist inversion, persistent craters, transition timing, aim cones, and audio scheduling recovery. Model tests cover seam continuity, terrain elevation, frame-independent exploration, habituation, restoration of novelty, selection diversity, neural stability, and MIDI structure. Browser checks cover free-flight telemetry, active swaps, controls, real audio output, minimal UI and responsive layout. Further checks cover recovery cooldowns, radial debris and bounces, firing-only bass, the twelve-second chant gate, and reticle expiry. `window.flyworld.state` exposes read-only diagnostics.

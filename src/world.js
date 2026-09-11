@@ -701,6 +701,10 @@ export class FlyWorld {
           (u, v) => this.height(u, v),
           this.simTime,
           vertical,
+          cameraDt,
+          (event) => {
+            if (event.escape) this.arcade.explode(event.impact, 6.5);
+          },
         ),
       );
       this.simTime += dt;

@@ -266,14 +266,49 @@ export class FlightPhysics {
     this.lastContact = null;
     this.verticalVelocity = 0;
     this.manualHeight = 0;
+    this.contactClock = 0;
+    this.recentContacts = [];
+    this.escapeUntil = -Infinity;
+    this.escapes = 0;
+    this.nextEscapeAt = 0;
+    this.nextLiftAt = 0;
+    this.nextClearAt = 0;
   }
-  step(dt, bias, field, height, time = 0, vertical = 0) {
+  registerContact(now) {
+    this.recentContacts = this.recentContacts.filter((t) => now - t <= 2);
+    this.recentContacts.push(now);
+    const crowded = this.recentContacts.length > 2;
+    // Recovery impulse is one fifth of the original and cannot be retriggered
+    // by landing contacts. Clearing a blocked route does not stack altitude.
+    if (crowded && now >= this.nextEscapeAt) {
+      this.escapes++;
+      this.escapeUntil = now + 0.4;
+      this.nextEscapeAt = now + 10;
+      this.lift = Math.max(this.lift, 4.8);
+    }
+    if (crowded && now >= this.nextClearAt) {
+      this.nextClearAt = now + 0.4;
+      return true;
+    }
+    return false;
+  }
+  step(
+    dt,
+    bias,
+    field,
+    height,
+    time = 0,
+    vertical = 0,
+    realDt = dt,
+    onContact = () => {},
+  ) {
     const events = [];
     let remaining = dt;
     while (remaining > 1e-8) {
       const step = Math.min(0.035, remaining);
       remaining -= step;
       time += step;
+      this.contactClock += dt > 0 ? (step * realDt) / dt : 0;
       this.cooldown -= step;
       this.heading += headingRate(bias) * step;
       const c = Math.cos(this.heading),
@@ -286,8 +321,10 @@ export class FlightPhysics {
         height(this.u, this.v),
         height(this.u + c * 12, this.v + s * 12),
       );
+      const verticalAttention = vertical;
       this.verticalVelocity +=
-        (vertical * 5 - this.verticalVelocity) * (1 - Math.exp(-step / 1.2));
+        (verticalAttention * 5 - this.verticalVelocity) *
+        (1 - Math.exp(-step / 1.2));
       this.manualHeight = clamp(
         this.manualHeight + this.verticalVelocity * step,
         -10,
@@ -314,24 +351,53 @@ export class FlightPhysics {
       if (earliest) {
         fraction = Math.max(0, earliest.t - 0.01);
         const [nu, nv, ny] = earliest.normal,
-          push = Math.min(3, earliest.penetration + 0.06);
+          push = Math.min(0.6, earliest.penetration + 0.06);
+        const impact = {
+          u: wrap(
+            this.u +
+              earliest.probe.u +
+              du * earliest.t -
+              nu * earliest.probe.radius,
+            WORLD.length,
+          ),
+          v: wrap(
+            this.v +
+              earliest.probe.v +
+              dv * earliest.t -
+              nv * earliest.probe.radius,
+            WORLD.width,
+          ),
+          y:
+            this.altitude +
+            earliest.probe.y +
+            dy * earliest.t -
+            ny * earliest.probe.radius,
+        };
         this.u += nu * push;
         this.v += nv * push;
         this.altitude += ny * push;
         if (this.cooldown <= 0) {
           this.back = 10;
-          this.lift = 4;
+          if (this.contactClock >= this.nextLiftAt) {
+            this.lift = Math.max(this.lift, 0.8);
+            this.nextLiftAt = this.contactClock + 0.875;
+          }
           this.cooldown = 0.7;
           this.contacts++;
           this.lastContact = earliest.probe.region;
-          events.push({
+          const escape = this.registerContact(this.contactClock);
+          const contact = {
             type: "contact",
+            escape,
+            impact,
             region: earliest.probe.region,
             intensity: clamp(0.35 + Math.abs(speed) / 9, 0.2, 1),
             u: this.u,
             v: this.v,
             y: this.altitude,
-          });
+          };
+          events.push(contact);
+          onContact(contact);
         }
       }
       this.u = wrap(this.u + du * fraction, WORLD.length);

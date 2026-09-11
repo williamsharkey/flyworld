@@ -246,3 +246,46 @@ test("outgoing voxel instances keep their centers and release colliders after 0.
   transitions.mesh.dispose();
   world.material.dispose();
 });
+
+test("crowded contacts clear obstacles but recovery kicks cannot stack or retrigger for ten seconds", () => {
+  const p = new FlightPhysics();
+  assert.equal(p.registerContact(0), false);
+  assert.equal(p.registerContact(0.5), false);
+  assert.equal(p.registerContact(1), true);
+  assert.equal(p.escapes, 1);
+  assert.equal(p.lift, 4.8);
+  assert.equal(p.manualHeight, 0);
+  assert.equal(p.verticalVelocity, 0);
+  p.lift = 0;
+  for (let t = 1.1; t < 10.9; t += 0.1) p.registerContact(t);
+  assert.equal(p.escapes, 1);
+  assert.equal(p.lift, 0);
+  assert.equal(p.escapeUntil, 1.4);
+  p.registerContact(11.1);
+  assert.equal(p.escapes, 2);
+  const sparse = new FlightPhysics();
+  for (let t = 0; t < 20; t += 2.1) sparse.registerContact(t);
+  assert.equal(sparse.escapes, 0);
+});
+
+test("repeated wall contact triggers clearance callbacks without launching far above the flight level", () => {
+  const p = new FlightPhysics(0, 10, 7),
+    field = { cast: () => ({ t: 0, normal: [-1, 0, 0], penetration: 0 }) };
+  let clearance = 0;
+  p.step(
+    4,
+    0,
+    field,
+    () => 0,
+    0,
+    0,
+    1,
+    (e) => {
+      if (e.escape) clearance++;
+    },
+  );
+  assert.ok(clearance > 0);
+  assert.equal(p.escapes, 1);
+  assert.ok(p.altitude < 10);
+  assert.equal(p.manualHeight, 0);
+});

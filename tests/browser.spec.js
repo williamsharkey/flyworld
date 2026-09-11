@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("live world, controls, disclosures, and mobile layout work without runtime errors", async ({
+test("minimal UI, live world, controls, audio, and mobile layout work without runtime errors", async ({
   page,
 }) => {
   const errors = [];
@@ -41,16 +41,12 @@ test("live world, controls, disclosures, and mobile layout work without runtime 
   await page.locator("#autosteer").uncheck();
   await page.locator("#new-world").click();
   await page.locator("#settings").click();
-  await page.locator("#about").click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.locator("#modal-content")).toContainText(
-    "does not load or simulate",
+  await expect(
+    page.locator("header,.intro,.sidebar,.ecosystem,.world-stats,.corner-note"),
+  ).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(
+    /world worth watching|proxy|inspired by|built with/i,
   );
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toBeHidden();
-  await page.locator('[data-species="4"]').click();
-  await expect(page.locator("#modal-title")).toHaveText("Drifters");
-  await page.locator("#close-modal").click();
   await page.locator("#immersive").click();
   await expect(page.locator("body")).toHaveClass("immersive");
   await page.locator("#exit-immersive").click();
@@ -75,9 +71,6 @@ test("live world, controls, disclosures, and mobile layout work without runtime 
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-    const intro = await page.locator(".intro").boundingBox(),
-      side = await page.locator(".sidebar").boundingBox();
-    expect(side.y).toBeGreaterThan(intro.y + intro.height);
     await expect(page.locator("#mutate")).toBeInViewport();
     await expect(page.locator("#orbit")).toBeInViewport();
   }
@@ -93,7 +86,9 @@ test("quadrants, inverted flight controls, tactile collisions, and the hidden ar
   await page.goto("/");
   await page.locator("#loading").waitFor({ state: "hidden" });
   expect(await page.locator("#arcade-reticle").count()).toBe(0);
-  await expect(page.locator(".eye-quadrants span")).toHaveCount(4);
+  expect(
+    (await page.evaluate(() => window.flyworld.state)).quadrants,
+  ).toHaveLength(4);
   await page.locator("#settings").click();
   await page.locator("#evolve").uncheck();
   await page.locator("#autosteer").uncheck();
@@ -195,6 +190,67 @@ test("quadrants, inverted flight controls, tactile collisions, and the hidden ar
   expect((await page.evaluate(() => window.flyworld.state)).paused).toBe(false);
   await page.evaluate(() =>
     window.flyworld.testing.world.collisions.remove("target"),
+  );
+  expect(errors).toEqual([]);
+});
+
+test("only firing starts bass; sustained firing unlocks the chant and the reticle fades", async ({
+  page,
+}) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page.locator("#loading").waitFor({ state: "hidden" });
+  await page.locator("#settings").click();
+  await page.locator("#evolve").uncheck();
+  await page.locator("#autosteer").uncheck();
+  await page.locator("#settings").click();
+  await page.waitForFunction(
+    () => window.flyworld.state.music.context === "running",
+  );
+  await page.evaluate(() => {
+    const { world, synth } = window.flyworld.testing;
+    world.physics.altitude = world.altitude = 45;
+    world.physics.manualHeight = 24;
+    world.height = () => 20; // clear air for sustained firing; no landscape changes.
+    const p = { u: world.u, v: world.v, y: world.altitude };
+    synth.event({ type: "contact", ...p }, world);
+    synth.event({ type: "explosion", ...p }, world);
+  });
+  expect(
+    (await page.evaluate(() => window.flyworld.state.music.combat)).active,
+  ).toBe(false);
+  await page.keyboard.down("Space");
+  await page.waitForFunction(
+    () => window.flyworld.state.music.combat.rms > 0.02,
+  );
+  const initial = await page.evaluate(() => window.flyworld.state.music.combat);
+  expect(initial.active).toBe(true);
+  expect(initial.chanting).toBe(false);
+  expect(initial.voiceWords).toBe(0);
+  await page.waitForFunction(
+    () => window.flyworld.state.music.combat.elapsed > 10,
+  );
+  expect(
+    (await page.evaluate(() => window.flyworld.state.music.combat)).voiceWords,
+  ).toBe(0);
+  await page.waitForFunction(
+    () =>
+      window.flyworld.state.music.combat.voiceWords >= 3 &&
+      window.flyworld.state.music.combat.voiceRms > 0.005,
+    {},
+    { timeout: 20000 },
+  );
+  await page.keyboard.up("Space");
+  await page.waitForFunction(
+    () => !document.getElementById("arcade-reticle"),
+    {},
+    { timeout: 8000 },
+  );
+  await page.waitForFunction(
+    () => !window.flyworld.state.music.combat.active,
+    {},
+    { timeout: 8000 },
   );
   expect(errors).toEqual([]);
 });

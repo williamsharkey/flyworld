@@ -1,3 +1,4 @@
+import { CombatAudio } from "./combat-audio.js";
 import { Ambience } from "./ambience.js";
 import { SCORE, scoreEvents } from "./score.js";
 import { random } from "./simulation.js";
@@ -22,8 +23,11 @@ export class DreamSynth {
     limiter.ratio.value = 5;
     this.master.connect(limiter).connect(ctx.destination);
     this.ambience = new Ambience(ctx, this.master);
+    this.musicGain = ctx.createGain();
+    this.musicGain.connect(this.master);
+    this.combat = new CombatAudio(ctx, this.master, this.musicGain);
     this.bus = ctx.createGain();
-    this.bus.connect(this.master);
+    this.bus.connect(this.musicGain);
     const reverb = ctx.createConvolver(),
       buffer = ctx.createBuffer(
         2,
@@ -39,7 +43,7 @@ export class DreamSynth {
     reverb.buffer = buffer;
     const wet = ctx.createGain();
     wet.gain.value = 0.28;
-    this.bus.connect(reverb).connect(wet).connect(this.master);
+    this.bus.connect(reverb).connect(wet).connect(this.musicGain);
     this.filter = ctx.createBiquadFilter();
     this.filter.type = "lowpass";
     this.filter.frequency.value = 950;
@@ -77,6 +81,7 @@ export class DreamSynth {
     this.schedule();
   }
   schedule() {
+    this.combat?.schedule();
     if (!this.ctx || this.ctx.state !== "running") return;
     // Start the score only when audio actually unlocks. Keep a generous buffer
     // for terrain rebuilds, and recover sustained notes after a delayed timer.
@@ -156,6 +161,7 @@ export class DreamSynth {
     this.ambience?.update(world, bias);
   }
   event(event, world) {
+    if (event.type === "shot") this.combat?.trigger();
     this.ambience?.event(event, world);
   }
   async setEnabled(enabled) {
@@ -215,6 +221,12 @@ export class DreamSynth {
       volume: this.volume,
       ambientRms: this.ambience?.rms || 0,
       soundEvents: this.ambience?.events || 0,
+      combat: this.combat?.state || {
+        active: false,
+        notes: 0,
+        drops: 0,
+        rms: 0,
+      },
     };
   }
 }
