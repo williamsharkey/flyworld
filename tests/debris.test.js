@@ -58,7 +58,7 @@ test("collision and explosion sounds cannot activate bass mode", () => {
   synth.event({ type: "shot" }, {});
   assert.equal(triggers, 1);
 });
-test("chant waits twelve active seconds before scheduling any syllable", () => {
+test("chant waits twelve active seconds before scheduling any phrase", () => {
   const c = Object.create(CombatAudio.prototype);
   Object.assign(c, {
     startedAt: 10,
@@ -68,7 +68,7 @@ test("chant waits twelve active seconds before scheduling any syllable", () => {
     chantLoop: 0,
   });
   let words = 0;
-  c.voice = { word: () => words++ };
+  c.voice = { ready: true, line: () => words++ };
   c.scheduleChant(21.99);
   assert.equal(words, 0);
   c.scheduleChant(22.01);

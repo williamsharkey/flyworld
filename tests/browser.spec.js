@@ -288,7 +288,7 @@ test("only firing starts bass; sustained firing unlocks the chant and the reticl
       window.flyworld.state.music.combat.voiceRms > 0.005,
     {}, { timeout: 12000 },
   );
-  expect((await page.evaluate(() => window.flyworld.state.music.combat)).voiceVolume).toBe(0.7);
+  expect((await page.evaluate(() => window.flyworld.state.music.combat)).voiceVolume).toBeCloseTo(0.385);
   await page.keyboard.up("Space");
   await page.waitForFunction(
     () => !document.getElementById("arcade-reticle"),
@@ -349,4 +349,31 @@ test("music and bass initialize when cancelAndHoldAtTime is unavailable", async 
  });
  expect(result.context).toBe('running');expect(result.rms).toBeGreaterThan(.001);
  expect(result.notes).toBeGreaterThan(0);expect(result.acid).toBeGreaterThan(0);
+});
+
+test("neural vocal atlas plays both families with the 55 percent gain reduction", async ({page}) => {
+  await page.route('**/vocal-check', r => r.fulfill({contentType:'text/html',body:'Audio rendering check'}));
+  await page.goto('/vocal-check');
+  const result = await page.evaluate(async () => {
+    const {RobotVoice} = await import('/src/robot-voice.js');
+    const render = async (gain = null) => {
+      const ctx = new OfflineAudioContext(1, 24000 * 8, 24000);
+      const voice = new RobotVoice(ctx, ctx.destination);
+      await voice.load();
+      if (!voice.ready) throw new Error(voice.error);
+      if (gain !== null) voice.gain.gain.value = gain;
+      voice.line('0-verse-00', 0);
+      voice.line('1-verse-00', 4);
+      const audio = await ctx.startRendering(), data = audio.getChannelData(0);
+      const rms = (start, end) => Math.sqrt(data.slice(start * 24000, end * 24000).reduce((s, v) => s + v * v, 0) / ((end - start) * 24000));
+      return {first: rms(0, 3.2), second: rms(4, 7.2), engine: voice.manifest.engine, lines: voice.lines};
+    };
+    return {current: await render(), reference: await render(1.4 * .7)};
+  });
+  expect(result.current.engine).toContain('Kokoro');
+  expect(result.current.lines).toBe(2);
+  expect(result.current.first).toBeGreaterThan(.01);
+  expect(result.current.second).toBeGreaterThan(.01);
+  expect(result.current.first / result.reference.first).toBeCloseTo(.55, 5);
+  expect(result.current.second / result.reference.second).toBeCloseTo(.55, 5);
 });

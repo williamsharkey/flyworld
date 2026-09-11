@@ -1,0 +1,435 @@
+{
+  "version": 1,
+  "engine": "Kokoro-82M v1.0 (ONNX)",
+  "sampleRate": 24000,
+  "bpm": 150,
+  "slotSeconds": 3.2,
+  "layers": {
+    "lead": 0.9,
+    "lowerOctave": 0.065,
+    "upperOctave": 0.035
+  },
+  "clips": {
+    "0-verse-00": {
+      "offset": 0.0,
+      "duration": 3.2,
+      "speechDuration": 2.9291666666666667,
+      "text": "Big booty fruit flies, fresh out of the rain.",
+      "rms": 0.10344447012324126
+    },
+    "0-verse-01": {
+      "offset": 3.2,
+      "duration": 3.2,
+      "speechDuration": 2.9498611111111113,
+      "text": "Soap in the wings, let it run down the drain.",
+      "rms": 0.10511096252359531
+    },
+    "0-verse-02": {
+      "offset": 6.4,
+      "duration": 3.2,
+      "speechDuration": 2.6087962962962963,
+      "text": "Six clean feet on the rim of a glass.",
+      "rms": 0.10100420779542936
+    },
+    "0-verse-03": {
+      "offset": 9.600000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.710277777777778,
+      "text": "Whole room turns when the fruit flies pass.",
+      "rms": 0.10590787923393699
+    },
+    "0-verse-04": {
+      "offset": 12.8,
+      "duration": 3.2,
+      "speechDuration": 2.942037037037037,
+      "text": "No velvet rope, just a split peach skin.",
+      "rms": 0.10708483228115553
+    },
+    "0-verse-05": {
+      "offset": 16.0,
+      "duration": 3.2,
+      "speechDuration": 2.8144444444444443,
+      "text": "Knock with the kick and the swarm lets you in.",
+      "rms": 0.07690774116542165
+    },
+    "0-verse-06": {
+      "offset": 19.200000000000003,
+      "duration": 3.2,
+      "speechDuration": 2.656296296296296,
+      "text": "Sweet on the floor, but the low end is rude.",
+      "rms": 0.11790272625128101
+    },
+    "0-verse-07": {
+      "offset": 22.400000000000002,
+      "duration": 3.2,
+      "speechDuration": 2.4533333333333336,
+      "text": "Small as a seed with a big-ass mood.",
+      "rms": 0.10738283145898155
+    },
+    "0-verse-08": {
+      "offset": 25.6,
+      "duration": 3.2,
+      "speechDuration": 2.256527777777778,
+      "text": "I caught your eye by the cherry-red light.",
+      "rms": 0.07057244966250013
+    },
+    "0-verse-09": {
+      "offset": 28.8,
+      "duration": 3.2,
+      "speechDuration": 2.763611111111111,
+      "text": "You caught my wing; now we bank to the right.",
+      "rms": 0.0736795122912243
+    },
+    "0-verse-10": {
+      "offset": 32.0,
+      "duration": 3.2,
+      "speechDuration": 1.8622685185185184,
+      "text": "Don't get mad if I wanna fuck.",
+      "rms": 0.08293062924772399
+    },
+    "0-verse-11": {
+      "offset": 35.2,
+      "duration": 3.2,
+      "speechDuration": 2.812638888888889,
+      "text": "Say what you want; I do not call that luck.",
+      "rms": 0.10717227845847474
+    },
+    "0-verse-12": {
+      "offset": 38.400000000000006,
+      "duration": 3.2,
+      "speechDuration": 2.65287037037037,
+      "text": "If it is a yes, let the whole floor know.",
+      "rms": 0.09496625546557072
+    },
+    "0-verse-13": {
+      "offset": 41.6,
+      "duration": 3.2,
+      "speechDuration": 2.478425925925926,
+      "text": "If it is a no, let the next track roll.",
+      "rms": 0.09619930342226628
+    },
+    "0-verse-14": {
+      "offset": 44.800000000000004,
+      "duration": 3.2,
+      "speechDuration": 2.3535648148148147,
+      "text": "Big round butts and a six-leg slide.",
+      "rms": 0.09479888537278872
+    },
+    "0-verse-15": {
+      "offset": 48.0,
+      "duration": 3.2,
+      "speechDuration": 2.3980092592592595,
+      "text": "Room for the whole damn swarm inside.",
+      "rms": 0.10392584377985455
+    },
+    "0-verse-16": {
+      "offset": 51.2,
+      "duration": 3.2,
+      "speechDuration": 2.7199537037037036,
+      "text": "One wrong key and the calm gets loud.",
+      "rms": 0.10519331853277143
+    },
+    "0-verse-17": {
+      "offset": 54.400000000000006,
+      "duration": 3.2,
+      "speechDuration": 2.3631944444444444,
+      "text": "Kick drums crack like a hole in the cloud.",
+      "rms": 0.11246980501402212
+    },
+    "0-verse-18": {
+      "offset": 57.6,
+      "duration": 3.2,
+      "speechDuration": 2.98,
+      "text": "Box by box, watch the old walls break.",
+      "rms": 0.09461941653766978
+    },
+    "0-verse-19": {
+      "offset": 60.800000000000004,
+      "duration": 3.2,
+      "speechDuration": 2.626574074074074,
+      "text": "One wild turn makes the whole grove shake.",
+      "rms": 0.0870784521728003
+    },
+    "0-verse-20": {
+      "offset": 64.0,
+      "duration": 3.2,
+      "speechDuration": 2.6227314814814813,
+      "text": "Roots in the air and a branch in the door.",
+      "rms": 0.11456542015749492
+    },
+    "0-verse-21": {
+      "offset": 67.2,
+      "duration": 3.2,
+      "speechDuration": 2.368009259259259,
+      "text": "That little bug wants a whole lot more.",
+      "rms": 0.09741794917654398
+    },
+    "0-verse-22": {
+      "offset": 70.4,
+      "duration": 3.2,
+      "speechDuration": 2.3179166666666666,
+      "text": "Peach juice drips from the disco ball.",
+      "rms": 0.09719863179470042
+    },
+    "0-verse-23": {
+      "offset": 73.60000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.7001388888888886,
+      "text": "Still got six feet when the last walls fall.",
+      "rms": 0.09258573395926022
+    },
+    "0-hook-00": {
+      "offset": 76.80000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.495601851851852,
+      "text": "Shake that rind, let the low end roll.",
+      "rms": 0.11298809011647187
+    },
+    "0-hook-01": {
+      "offset": 80.0,
+      "duration": 3.2,
+      "speechDuration": 2.40875,
+      "text": "Six feet down and a whole lot of soul.",
+      "rms": 0.11714890276747206
+    },
+    "0-hook-02": {
+      "offset": 83.2,
+      "duration": 3.2,
+      "speechDuration": 2.8156018518518517,
+      "text": "Tear da club up, tear da fucking club up.",
+      "rms": 0.10985548932877211
+    },
+    "0-hook-03": {
+      "offset": 86.4,
+      "duration": 3.2,
+      "speechDuration": 2.98,
+      "text": "Big booty fruit flies, bring the whole swarm up.",
+      "rms": 0.1118936869445045
+    },
+    "0-bridge-00": {
+      "offset": 89.60000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.645185185185185,
+      "text": "Hold that wingbeat. Let the room breathe.",
+      "rms": 0.11459634853045639
+    },
+    "0-bridge-01": {
+      "offset": 92.80000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.618425925925926,
+      "text": "One more turn. Bring it back underneath.",
+      "rms": 0.05927960443088229
+    },
+    "1-verse-00": {
+      "offset": 96.0,
+      "duration": 3.2,
+      "speechDuration": 2.2937037037037036,
+      "text": "Rain on the river, the city turns blue.",
+      "rms": 0.1343700767308188
+    },
+    "1-verse-01": {
+      "offset": 99.2,
+      "duration": 3.2,
+      "speechDuration": 2.0013888888888887,
+      "text": "Every small ripple brings somebody new.",
+      "rms": 0.0880898668241237
+    },
+    "1-verse-02": {
+      "offset": 102.4,
+      "duration": 3.2,
+      "speechDuration": 2.1686111111111113,
+      "text": "Follow the current that runs under chrome.",
+      "rms": 0.098404164160476
+    },
+    "1-verse-03": {
+      "offset": 105.60000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.5655555555555556,
+      "text": "We bend with the world till the curve leads home.",
+      "rms": 0.12048930816124137
+    },
+    "1-verse-04": {
+      "offset": 108.80000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.6975462962962964,
+      "text": "No straight lines on the path that we chose.",
+      "rms": 0.13591398030432653
+    },
+    "1-verse-05": {
+      "offset": 112.0,
+      "duration": 3.2,
+      "speechDuration": 2.6149999999999998,
+      "text": "Just loops in the light where the riverbank glows.",
+      "rms": 0.14191626021914217
+    },
+    "1-verse-06": {
+      "offset": 115.2,
+      "duration": 3.2,
+      "speechDuration": 2.1189351851851854,
+      "text": "Ten different colors in one long night.",
+      "rms": 0.1255196432669487
+    },
+    "1-verse-07": {
+      "offset": 118.4,
+      "duration": 3.2,
+      "speechDuration": 2.217361111111111,
+      "text": "Same little body, a new kind of flight.",
+      "rms": 0.1411686108568716
+    },
+    "1-verse-08": {
+      "offset": 121.60000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.084907407407407,
+      "text": "Wake in a petal with dust on your knees.",
+      "rms": 0.11234273228139041
+    },
+    "1-verse-09": {
+      "offset": 124.80000000000001,
+      "duration": 3.2,
+      "speechDuration": 2.384861111111111,
+      "text": "Shake out the wings in the warm night breeze.",
+      "rms": 0.11422609618538763
+    },
+    "1-verse-10": {
+      "offset": 128.0,
+      "duration": 3.2,
+      "speechDuration": 2.471064814814815,
+      "text": "Wash that ass, let the cold stream run.",
+      "rms": 0.13603885797142232
+    },
+    "1-verse-11": {
+      "offset": 131.20000000000002,
+      "duration": 3.2,
+      "speechDuration": 2.3282407407407404,
+      "text": "Still got the rhythm when the rinsing is done.",
+      "rms": 0.13188125550607305
+    },
+    "1-verse-12": {
+      "offset": 134.4,
+      "duration": 3.2,
+      "speechDuration": 2.2394907407407407,
+      "text": "Low tide glass and a high-wire hum.",
+      "rms": 0.12838807595898735
+    },
+    "1-verse-13": {
+      "offset": 137.6,
+      "duration": 3.2,
+      "speechDuration": 2.5930092592592593,
+      "text": "Tell all the bugs where the good beats come from.",
+      "rms": 0.12607660095363832
+    },
+    "1-verse-14": {
+      "offset": 140.8,
+      "duration": 3.2,
+      "speechDuration": 2.156388888888889,
+      "text": "Beat in the belly and light in the rain.",
+      "rms": 0.10744123397405564
+    },
+    "1-verse-15": {
+      "offset": 144.0,
+      "duration": 3.2,
+      "speechDuration": 2.3024537037037036,
+      "text": "We shed yesterday when we circle again.",
+      "rms": 0.1205393238366322
+    },
+    "1-verse-16": {
+      "offset": 147.20000000000002,
+      "duration": 3.2,
+      "speechDuration": 2.50375,
+      "text": "Sun rolls over; the shadows roll too.",
+      "rms": 0.13428467443518333
+    },
+    "1-verse-17": {
+      "offset": 150.4,
+      "duration": 3.2,
+      "speechDuration": 1.8849999999999998,
+      "text": "Gold on the water where we first flew.",
+      "rms": 0.11605656827797385
+    },
+    "1-verse-18": {
+      "offset": 153.60000000000002,
+      "duration": 3.2,
+      "speechDuration": 2.336574074074074,
+      "text": "Every old footprint is fading from sight.",
+      "rms": 0.10671039037051043
+    },
+    "1-verse-19": {
+      "offset": 156.8,
+      "duration": 3.2,
+      "speechDuration": 2.0994444444444444,
+      "text": "Still got a path in the map of the night.",
+      "rms": 0.12786074870216832
+    },
+    "1-verse-20": {
+      "offset": 160.0,
+      "duration": 3.2,
+      "speechDuration": 2.2091666666666665,
+      "text": "Last little dance on the edge of the rind.",
+      "rms": 0.10185853111787119
+    },
+    "1-verse-21": {
+      "offset": 163.20000000000002,
+      "duration": 3.2,
+      "speechDuration": 2.1302777777777777,
+      "text": "Leave all the dead little loops behind.",
+      "rms": 0.09900761898925606
+    },
+    "1-verse-22": {
+      "offset": 166.4,
+      "duration": 3.2,
+      "speechDuration": 2.600925925925926,
+      "text": "Bring back the hush, let the long notes bloom.",
+      "rms": 0.13015996605120184
+    },
+    "1-verse-23": {
+      "offset": 169.60000000000002,
+      "duration": 3.2,
+      "speechDuration": 1.9265740740740742,
+      "text": "We meet on the next turn of this room.",
+      "rms": 0.09689668915353458
+    },
+    "1-hook-00": {
+      "offset": 172.8,
+      "duration": 3.2,
+      "speechDuration": 2.1702777777777778,
+      "text": "Round we go, where the neon flows.",
+      "rms": 0.09374515094859287
+    },
+    "1-hook-01": {
+      "offset": 176.0,
+      "duration": 3.2,
+      "speechDuration": 2.8806944444444444,
+      "text": "Down by the water, where the wild light grows.",
+      "rms": 0.14921002892972657
+    },
+    "1-hook-02": {
+      "offset": 179.20000000000002,
+      "duration": 3.2,
+      "speechDuration": 2.636064814814815,
+      "text": "Let that bass breathe, let the warm rain fall.",
+      "rms": 0.13158704860133122
+    },
+    "1-hook-03": {
+      "offset": 182.4,
+      "duration": 3.2,
+      "speechDuration": 2.8636574074074073,
+      "text": "Little wings, big night; there is room for us all.",
+      "rms": 0.16781807597215684
+    },
+    "1-bridge-00": {
+      "offset": 185.60000000000002,
+      "duration": 3.2,
+      "speechDuration": 2.3967592592592593,
+      "text": "Hear that water. Let the long notes shine.",
+      "rms": 0.1258512702631123
+    },
+    "1-bridge-01": {
+      "offset": 188.8,
+      "duration": 3.2,
+      "speechDuration": 2.24875,
+      "text": "Take your time. We come around in time.",
+      "rms": 0.09346800220708117
+    }
+  },
+  "sha256": "d77f1b4bbd89011559a1807c233d244925e0691387365959aeae7b0948553c1a"
+}
