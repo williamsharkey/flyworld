@@ -4,7 +4,7 @@ import { makeDebris, stepDebris } from "../src/debris.js";
 import { random, delta } from "../src/simulation.js";
 import { CollisionField } from "../src/physics.js";
 import { DreamSynth } from "../src/audio.js";
-import { CombatAudio } from "../src/combat-audio.js";
+import { COMBAT_BPM, CombatAudio } from "../src/combat-audio.js";
 
 test("debris starts inside the impacted voxel and moves outward with a size-dependent impulse", () => {
   const rng = random(1),
@@ -72,6 +72,9 @@ test("chant waits twelve active seconds before scheduling any syllable", () => {
   c.scheduleChant(21.99);
   assert.equal(words, 0);
   c.scheduleChant(22.01);
-  assert.ok(words > 0);
   assert.ok(c.chantOrigin >= 22);
+  const beatIndex = (c.chantOrigin - c.startedAt - 0.008) / (60 / COMBAT_BPM);
+  assert.ok(Math.abs((beatIndex - 1) / 4 - Math.round((beatIndex - 1) / 4)) < 1e-9);
+  c.scheduleChant(c.chantOrigin - 0.1);
+  assert.ok(words > 0);
 });

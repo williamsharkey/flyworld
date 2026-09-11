@@ -3,7 +3,6 @@ import {
   createIcons,
   Pause,
   Play,
-  ChevronsRight,
   Video,
   Shuffle,
   SlidersHorizontal,
@@ -15,7 +14,6 @@ import {
 const icons = {
   Pause,
   Play,
-  ChevronsRight,
   Video,
   Shuffle,
   SlidersHorizontal,
@@ -27,6 +25,7 @@ const icons = {
 import { Ecosystem, FlyBrain } from "./simulation.js";
 import { FlyWorld } from "./world.js";
 import { TrailMap } from "./exploration.js";
+import { FlightPace } from "./pace.js";
 import { FlightInput } from "./controls.js";
 import { DreamSynth } from "./audio.js";
 
@@ -36,7 +35,7 @@ const app = document.querySelector("#app");
 app.innerHTML = `
 <canvas id="world" aria-label="Fly through an evolving voxel world"></canvas>
 <section class="map-panel" aria-label="Exploration map"><canvas id="orbit" width="480" height="160" aria-label="Explored paths"></canvas><span id="coverage">0.00%</span></section>
-<nav class="controls" aria-label="Simulation controls"><button id="pause" class="control-button primary" title="Pause simulation" aria-label="Pause simulation">${icon("pause")}</button><button id="speed" class="control-button" title="Change simulation speed"><span id="speed-label">1×</span>${icon("chevrons-right")}</button><span class="control-sep"></span><button id="camera" class="control-button active" title="Change camera (C)">${icon("video")}<span class="camera-label" id="camera-label">Follow</span></button><button id="mutate" class="control-button mutate" title="Mutate the landscape ahead (M)">${icon("shuffle")}<span>Mutate</span></button><span class="control-sep"></span><button id="settings" class="control-button icon-only" title="Evolution settings" aria-label="Evolution settings" aria-expanded="false">${icon("sliders-horizontal")}</button><button id="sound" class="control-button icon-only" title="Mute music and ambience" aria-label="Mute music and ambience" aria-pressed="true">${icon("volume-2")}</button><button id="immersive" class="control-button icon-only" title="Screensaver mode (F)" aria-label="Enter screensaver mode">${icon("maximize")}</button></nav>
+<nav class="controls" aria-label="Simulation controls"><button id="pause" class="control-button primary" title="Pause simulation" aria-label="Pause simulation">${icon("pause")}</button><span class="control-sep"></span><button id="camera" class="control-button active" title="Change camera (C)">${icon("video")}<span class="camera-label" id="camera-label">Follow</span></button><button id="mutate" class="control-button mutate" title="Mutate the landscape ahead (M)">${icon("shuffle")}<span>Mutate</span></button><span class="control-sep"></span><button id="settings" class="control-button icon-only" title="Evolution settings" aria-label="Evolution settings" aria-expanded="false">${icon("sliders-horizontal")}</button><button id="sound" class="control-button icon-only" title="Mute music and ambience" aria-label="Mute music and ambience" aria-pressed="true">${icon("volume-2")}</button><button id="immersive" class="control-button icon-only" title="Screensaver mode (F)" aria-label="Enter screensaver mode">${icon("maximize")}</button></nav>
 <section id="settings-popover" class="settings-popover" hidden><h3>Settings</h3><div class="setting-row"><label for="mutation">Mutation strength</label><output id="mutation-value">55%</output></div><input id="mutation" type="range" min="0" max="80" value="55"/><div class="setting-row"><label for="evolve">Natural selection</label><input class="switch" id="evolve" type="checkbox" checked/></div><div class="setting-row"><label for="autosteer">Visual steering</label><input class="switch" id="autosteer" type="checkbox" checked/></div><div class="setting-row"><label for="music-volume">Volume</label><output id="music-volume-value">50%</output></div><input id="music-volume" type="range" min="0" max="100" value="50"/><a class="midi-link" href="${import.meta.env.BASE_URL}wandering-light.mid" download="wandering-light.mid">Download the original MIDI ↗</a><button id="new-world" class="control-button active" style="width:100%;margin-top:15px">${icon("refresh-cw")} Reseed the world</button></section>
 <button class="exit-immersive" id="exit-immersive" hidden aria-label="Show controls">${icon("maximize")}</button>
 <div class="toast" id="toast" role="status"></div><div class="loading" id="loading" role="status">Loading…</div>`;
@@ -44,12 +43,13 @@ createIcons({ icons });
 const $ = (id) => document.getElementById(id);
 const synth = new DreamSynth();
 const flightInput = new FlightInput();
+const pace = new FlightPace();
 let manualControl = { bias: 0, vertical: 0, active: false, mix: 0 };
 let ecosystem = new Ecosystem(),
   brain = new FlyBrain(),
   world;
 let paused = false,
-  speed = 1,
+  speed = 0.5,
   autosteer = true,
   immersive = false,
   lastTime = 0,
@@ -87,11 +87,6 @@ function togglePause() {
   synth.setPaused(paused);
 }
 $("pause").onclick = togglePause;
-$("speed").onclick = () => {
-  speed = { 1: 2, 2: 4, 4: 0.5, 0.5: 1 }[speed];
-  $("speed-label").textContent = `${speed}×`;
-  toast(`Moving at ${speed}× · ${formatTime(75 / speed)} per straight lap`);
-};
 function cycleCamera() {
   world.cameraMode = (world.cameraMode + 1) % 3;
   $("camera-label").textContent = ["Follow", "Overlook", "Fly eye"][
@@ -146,6 +141,8 @@ $("new-world").onclick = () => {
   world.ecosystem = next;
   brain = new FlyBrain();
   world.reset();
+  pace.reset();
+  speed = pace.value;
   flightInput.clear();
   document.getElementById("arcade-reticle")?.remove();
   toast("World reset");
@@ -232,11 +229,6 @@ async function unlockAudio(event) {
 }
 window.addEventListener("pointerdown", unlockAudio, { capture: true });
 window.addEventListener("keydown", unlockAudio, { capture: true });
-function formatTime(seconds) {
-  const m = Math.floor(seconds / 60),
-    s = Math.floor(seconds % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
 function updateUI() {
   $("coverage").textContent =
     `${(world.exploration.coverage * 100).toFixed(2)}%`;
@@ -267,6 +259,8 @@ function animate(now) {
     qualityTime = 0;
     qualityFrames = 0;
   }
+  if (!paused)
+    speed = pace.update(realDt, world.arcade.held || world.arcade.queued > 0);
   const dt = paused ? 0 : realDt * speed * 4;
   manualControl = flightInput.update(
     realDt,
@@ -366,6 +360,8 @@ window.flyworld = {
       heading: world.heading,
       contacts: world.physics.contacts,
       escapes: world.physics.escapes,
+      avoidance: world.physics.avoidance,
+      passingThrough: world.physics.contactClock < world.physics.phaseUntil,
       escapeActive: world.physics.contactClock < world.physics.escapeUntil,
       lastFire: world.arcade.lastFireTime,
       touchCount: brain.touchCount,

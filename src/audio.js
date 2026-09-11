@@ -119,8 +119,8 @@ export class DreamSynth {
     const strength =
         (event.velocity / 127) *
         (pad ? 0.06 : bass ? 0.11 : bell ? 0.046 : 0.045),
-      attack = pad ? 1.4 : bass ? 0.13 : 0.025,
-      release = pad ? 2.3 : 1.5;
+      attack = pad ? 1.4 : bass ? 0.015 : 0.025,
+      release = pad ? 2.3 : bass ? 0.15 : bell ? 1.5 : 0.35;
     env.gain.setValueAtTime(0, time);
     env.gain.linearRampToValueAtTime(strength, time + attack);
     env.gain.exponentialRampToValueAtTime(

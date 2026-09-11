@@ -1,24 +1,9 @@
-import { RobotVoice, CHANT_WORDS } from "./robot-voice.js";
+import { AcidBass, ACID_DELAY } from "./acid.js";
+import { RobotVoice, CHANT_BEATS, VOICE_VOLUME, vocalBar } from "./robot-voice.js";
 import { random } from "./simulation.js";
-export const COMBAT_BPM = 145;
-const bassLine = [
-  0,
-  null,
-  0,
-  12,
-  null,
-  7,
-  0,
-  null,
-  0,
-  10,
-  null,
-  7,
-  0,
-  null,
-  12,
-  7,
-];
+export const COMBAT_BPM = 150;
+// Short repeating sub phrase leaves room for the chant and acid voice.
+const bassLine = [0, null, 0, null, 0, null, 12, 0, 0, null, 0, null, 0, null, 7, null];
 /** An original electro / booty-bass groove, synthesized without samples. */
 export class CombatAudio {
   constructor(ctx, destination, musicGain) {
@@ -44,6 +29,7 @@ export class CombatAudio {
       rng = random(145808);
     for (let i = 0; i < data.length; i++) data[i] = rng() * 2 - 1;
     this.voice = new RobotVoice(ctx, this.bus, this.noise);
+    this.acid = new AcidBass(ctx, this.bus);
     this.curve = Float32Array.from({ length: 2048 }, (_, i) =>
       Math.tanh((i / 1023.5 - 1) * 3),
     );
@@ -63,6 +49,7 @@ export class CombatAudio {
       this.chantIndex = 0;
       this.chantLoop = 0;
       this.voice.stop();
+      this.acid.reset();
       this.step = 0;
       this.next = now + 0.008;
       this.drop(now);
@@ -155,6 +142,7 @@ export class CombatAudio {
         this.musicGain.gain.setTargetAtTime(1, now, 0.7);
         this.ducked = false;
         this.voice.stop();
+        this.acid.stop();
         this.chantOrigin = null;
       }
       return;
@@ -170,15 +158,16 @@ export class CombatAudio {
     while (this.next < Math.min(now + 0.65, this.until)) {
       const t = Math.max(now, this.next),
         s = this.step % 16;
-      if ([0, 3, 6, 8, 11, 14].includes(s))
-        this.tone(t, 150, 0.32, 0.55, { end: 43, drive: true });
+      if (t - this.startedAt >= ACID_DELAY) this.acid.step(this.step, t, tick);
+      if (s % 4 === 0 || s === (Math.floor(this.step / 16) % 2 ? 14 : 6))
+        this.tone(t, 155, 0.27, 0.55, { end: 43, drive: true });
       if (s === 4 || s === 12) {
-        this.noiseHit(t, 0.17, 0.32, 1700, 0, true);
+        this.noiseHit(t, 0.11, 0.34, 1850, 0, true);
         this.tone(t, 190, 0.1, 0.13, { end: 120 });
       }
       this.noiseHit(
         t,
-        s % 4 === 2 ? 0.12 : 0.035,
+        s % 4 === 2 ? 0.085 : 0.026,
         s % 2 === 0 ? 0.085 : 0.04,
         7500,
         s % 2 ? -0.25 : 0.25,
@@ -186,7 +175,7 @@ export class CombatAudio {
       const note = bassLine[s];
       if (note !== null) {
         const f = 440 * 2 ** ((26 + note - 69) / 12);
-        this.tone(t + 0.016, f, 0.19, 0.32, { drive: true });
+        this.tone(t + 0.016, f, s % 4 === 0 ? 0.24 : 0.13, 0.32, { drive: true });
         this.tone(t + 0.016, f * 2, 0.14, 0.055, { type: "triangle" });
       }
       this.next += tick;
@@ -196,22 +185,29 @@ export class CombatAudio {
   scheduleChant(now) {
     if (now - this.startedAt < 12) return;
     const beat = 60 / COMBAT_BPM;
-    if (this.chantOrigin === null) this.chantOrigin = now + 0.03;
+    if (this.chantOrigin === null) {
+      const secondBeat = this.startedAt + 0.008 + beat;
+      const ready = Math.max(this.startedAt + 12, now + 0.015);
+      this.chantOrigin = secondBeat + Math.ceil((ready - secondBeat) / (4 * beat)) * 4 * beat;
+    }
     while (true) {
-      const word = CHANT_WORDS[this.chantIndex],
-        time = this.chantOrigin + (this.chantLoop * 8 + word.beat) * beat;
-      if (time > Math.min(now + 0.4, this.until - 0.2)) break;
-      if (time >= now - 0.1)
+      const words = vocalBar(this.chantLoop).words,
+        word = words[this.chantIndex],
+        time =
+          this.chantOrigin + (this.chantLoop * CHANT_BEATS + word.beat) * beat;
+      if (time > Math.min(now + 0.65, this.until - 0.2)) break;
+      if (time >= now)
         this.voice.word(
           word.word,
-          Math.max(time, now),
-          word.word === "fuck" || word.word === "ing"
-            ? beat * 0.43
-            : beat * 0.64,
+          time,
+          ((words[this.chantIndex + 1]?.beat ?? CHANT_BEATS) -
+            word.beat) *
+            beat *
+            0.86,
           word.note,
         );
       this.chantIndex++;
-      if (this.chantIndex === CHANT_WORDS.length) {
+      if (this.chantIndex === words.length) {
         this.chantIndex = 0;
         this.chantLoop++;
       }
@@ -223,12 +219,23 @@ export class CombatAudio {
     return {
       active: this.ctx.currentTime <= this.until,
       bpm: COMBAT_BPM,
+      acid: {
+        ...this.acid.state,
+        active:
+          this.ctx.currentTime <= this.until &&
+          this.ctx.currentTime - this.startedAt >= ACID_DELAY,
+      },
       elapsed:
         this.ctx.currentTime <= this.until
           ? this.ctx.currentTime - this.startedAt
           : 0,
       chanting: this.chantOrigin !== null && this.ctx.currentTime <= this.until,
       voiceWords: this.voice.words,
+      voiceLayers: 2,
+      voiceVolume: VOICE_VOLUME,
+      vocalLine: this.chantOrigin === null ? null : vocalBar(Math.max(0,
+        Math.floor((this.ctx.currentTime - this.chantOrigin) / (CHANT_BEATS * 60 / COMBAT_BPM)))).text,
+      chantPeriod: (CHANT_BEATS * 60) / COMBAT_BPM,
       voiceRms: this.voice.rms,
       notes: this.notes,
       drops: this.drops,

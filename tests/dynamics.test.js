@@ -33,11 +33,13 @@ test("terrain is periodic, continuous, and has both riverbeds and mountains", ()
     Math.abs(e.terrainHeight(95, -0.001) - e.terrainHeight(95, 0.001)) < 0.02,
   );
 });
-test("elevation genes actually change the ground field", () => {
+test("evolution cannot move existing terrain elevations", () => {
   const e = new Ecosystem(),
     before = e.terrainHeight(64, 96);
   e.patch(4, 6).elevation += 0.8;
-  assert.ok(e.terrainHeight(64, 96) > before + 4);
+  e.patch(4, 6).ruggedness = 1;
+  for (let i = 0; i < 50; i++) e.evolve(32, 96, 0.5, true);
+  assert.equal(e.terrainHeight(64, 96), before);
 });
 test("visitation counts crossings, not time spent hovering", () => {
   const m = new Exploration();
@@ -117,7 +119,7 @@ test("original score exports a valid five-track MIDI with bounded event times", 
   }
   assert.equal(tracks, 5);
   assert.equal(offset, midi.length);
-  assert.equal(SCORE.bpm, 72);
+  assert.equal(SCORE.bpm, 75);
   for (const e of scoreEvents()) {
     assert.ok(e.note >= 0 && e.note <= 127);
     assert.ok(e.beat >= 0 && e.beat < SCORE.beats);

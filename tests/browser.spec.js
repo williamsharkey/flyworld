@@ -32,8 +32,8 @@ test("minimal UI, live world, controls, audio, and mobile layout work without ru
   expect(after.accepted).toBe(before.accepted + 20);
   for (let i = 0; i < 3; i++) await page.locator("#camera").click();
   expect((await page.evaluate(() => window.flyworld.state)).camera).toBe(0);
-  await page.locator("#speed").click();
-  expect((await page.evaluate(() => window.flyworld.state)).speed).toBe(2);
+  await expect(page.locator("#speed")).toHaveCount(0);
+  expect((await page.evaluate(() => window.flyworld.state)).speed).toBe(0.5);
   await page.locator("#settings").click();
   await page.locator("#mutation").fill("53");
   await expect(page.locator("#mutation-value")).toHaveText("53%");
@@ -141,6 +141,7 @@ test("quadrants, inverted flight controls, tactile collisions, and the hidden ar
     p.heading = world.heading = 0;
     p.back = p.lift = 0;
     p.cooldown = 0;
+    p.phaseUntil = -Infinity;
     world.collisions.replace("fixture", [
       {
         u: world.u + 1.9,
@@ -228,6 +229,26 @@ test("only firing starts bass; sustained firing unlocks the chant and the reticl
   expect(initial.active).toBe(true);
   expect(initial.chanting).toBe(false);
   expect(initial.voiceWords).toBe(0);
+  expect(initial.acid.active).toBe(false);
+  await page.waitForFunction(
+    () =>
+      window.flyworld.state.music.combat.acid.active &&
+      window.flyworld.state.music.combat.acid.rms > 0.005,
+    {},
+    { timeout: 20000 },
+  );
+  const acid = await page.evaluate(
+    () => window.flyworld.state.music.combat.acid,
+  );
+  expect(acid.notes).toBeGreaterThan(0);
+  await page.waitForFunction(
+    () =>
+      window.flyworld.state.music.combat.acid.slides > 0 &&
+      window.flyworld.state.music.combat.acid.ties > 0,
+  );
+  expect(
+    (await page.evaluate(() => window.flyworld.state)).speed,
+  ).toBeGreaterThan(3.5);
   await page.waitForFunction(
     () => window.flyworld.state.music.combat.elapsed > 10,
   );
@@ -241,6 +262,12 @@ test("only firing starts bass; sustained firing unlocks the chant and the reticl
     {},
     { timeout: 20000 },
   );
+  await page.waitForFunction(
+    () => window.flyworld.state.music.combat.vocalLine?.startsWith("Big booty") &&
+      window.flyworld.state.music.combat.voiceRms > 0.005,
+    {}, { timeout: 12000 },
+  );
+  expect((await page.evaluate(() => window.flyworld.state.music.combat)).voiceVolume).toBe(0.7);
   await page.keyboard.up("Space");
   await page.waitForFunction(
     () => !document.getElementById("arcade-reticle"),
@@ -248,7 +275,9 @@ test("only firing starts bass; sustained firing unlocks the chant and the reticl
     { timeout: 8000 },
   );
   await page.waitForFunction(
-    () => !window.flyworld.state.music.combat.active,
+    () =>
+      !window.flyworld.state.music.combat.active &&
+      window.flyworld.state.speed < 1.3,
     {},
     { timeout: 8000 },
   );

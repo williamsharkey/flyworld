@@ -82,7 +82,7 @@ export class FlyWorld {
     this.renderer.toneMappingExposure = 1.08;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#b8bba1");
-    this.scene.fog = new THREE.FogExp2("#b7bca2", 0.009);
+    this.scene.fog = new THREE.FogExp2("#b7bca2", 0.0065);
     this.camera = new THREE.PerspectiveCamera(
       52,
       innerWidth / innerHeight,
@@ -121,7 +121,7 @@ export class FlyWorld {
     #endif
     vWater=step(1.5,instanceRoot.w)*(1.0-step(2.5,instanceRoot.w));
     if(vWater>.5)wp.y+=sin(wp.x*.6-wp.z*.45+uTime*1.6)*.06;
-    if(instanceRoot.w>2.5)wp.y+=sin(uTime*1.5+instanceRoot.x*.15)*.8;
+    if(instanceRoot.w>2.5)wp.y+=sin(uTime*.22+instanceRoot.x*.15)*.18;
     float du = mod(-wp.z-uCenter+480.0,960.0)-480.0;
     float dv = mod(wp.x-uFlyV+160.0,320.0)-160.0;
     float radius=length(vec2(du,dv));float t=clamp((radius-96.0)/40.0,0.0,1.0);
@@ -415,6 +415,11 @@ export class FlyWorld {
     const patch = this.ecosystem.patch(cu, cv),
       rng = random(patch.seed),
       genes = patch.genes;
+    const distant =
+      Math.hypot(
+        delta(patch.u * 16 + 8, this.u, WORLD.length),
+        delta(patch.v * 16 + 8, this.v, WORLD.width),
+      ) > 145;
     const mesh =
       old || new THREE.InstancedMesh(box.clone(), this.material, 2200);
     mesh.frustumCulled = false;
@@ -489,21 +494,24 @@ export class FlyWorld {
           h = this.height(u, v, patch);
         root = [v, h, u, 0];
         const underwater = h < WORLD.seaLevel;
+        const groundRandom = random((u * 73856093) ^ (v * 19349663));
+        const groundPick = arr => arr[Math.floor(groundRandom() * arr.length)];
         const gcolor = underwater
           ? "#779286"
           : h > 14
             ? "#d5d8c6"
             : h > 9
-              ? pick(palettes.rock)
+              ? groundPick(palettes.rock)
               : h < WORLD.seaLevel + 1
                 ? "#c4b895"
-                : pick(palettes.ground);
+                : groundPick(palettes.ground);
         put(v, (h - 32) / 2, u, 2, h + 32, 2, gcolor);
         if (underwater) {
           root = [v, WORLD.seaLevel, u, 2];
           put(v, WORLD.seaLevel, u, 2, 0.2, 2, h < -5 ? "#538f99" : "#79b2b2");
           if (patch.form !== 9) continue;
         }
+        if (distant) continue;
         if (patch.form >= 2 && (x === 2 || x === 6) && (z === 2 || z === 6))
           buildPrimitive(
             patch.form,
@@ -627,6 +635,7 @@ export class FlyWorld {
     roots.needsUpdate = true;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.userData.distant = distant;
     mesh.userData.version = patch.version;
     mesh.userData.u = patch.u;
     mesh.userData.v = patch.v;
@@ -641,8 +650,8 @@ export class FlyWorld {
     this.chunkToken = token;
     const wanted = new Set(),
       jobs = [];
-    for (let a = -10; a <= 10; a++)
-      for (let b = -10; b <= 10; b++) {
+    for (let a = -12; a <= 12; a++)
+      for (let b = -12; b <= 12; b++) {
         const u = (cu + a) * 16 + 8,
           v = (cv + b) * 16 + 8,
           rotated = twist(
@@ -650,12 +659,21 @@ export class FlyWorld {
             delta(v, this.v, WORLD.width),
             this.heading,
           );
-        if (rotated.u < -42 || rotated.u > 146 || Math.abs(rotated.v) > 82)
+        if (rotated.u < -42 || rotated.u > 190 || Math.abs(rotated.v) > 96)
           continue;
         const key = this.ecosystem.key(cu + a, cv + b);
         if (wanted.has(key)) continue;
         wanted.add(key);
-        if (!this.chunks.has(key) || this.dirty.has(key))
+        const distant =
+          Math.hypot(
+            delta(u, this.u, WORLD.length),
+            delta(v, this.v, WORLD.width),
+          ) > 145;
+        if (
+          !this.chunks.has(key) ||
+          this.dirty.has(key) ||
+          this.chunks.get(key).userData.distant !== distant
+        )
           jobs.push([key, cu + a, cv + b]);
       }
     const pool = [];
@@ -679,12 +697,7 @@ export class FlyWorld {
     this.dirty.clear();
   }
   markDirty(keys) {
-    for (const key of keys) {
-      const [a, b] = key.split(",").map(Number);
-      for (let x = -1; x <= 1; x++)
-        for (let y = -1; y <= 1; y++)
-          this.dirty.add(this.ecosystem.key(a + x, b + y));
-    }
+    for (const key of keys) this.dirty.add(key);
   }
   update(dt, steer, cameraDt = dt, vertical = 0) {
     this.wallTime += cameraDt;

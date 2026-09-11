@@ -98,7 +98,7 @@ test("fast swept collisions catch a narrow obstacle across a periodic seam", () 
     null,
   );
 });
-test("head contact stops forward penetration and recoils backward and upward", () => {
+test("contact nudges upward and permits smooth forward passage instead of pinning the fly", () => {
   const field = new CollisionField(),
     p = new FlightPhysics(0, 10, 7);
   field.replace("wall", [
@@ -109,9 +109,11 @@ test("head contact stops forward penetration and recoils backward and upward", (
     contacts.push(...p.step(0.03, 0, field, () => 0, i * 0.03));
   assert.ok(contacts.length > 0);
   assert.equal(contacts[0].region, "head");
-  assert.ok(delta(p.u, 0, 960) < 1);
+  assert.ok(delta(p.u, 0, 960) > 1);
+  assert.equal(contacts.length, 1);
+  assert.ok(p.phaseUntil > p.contactClock);
   assert.ok(p.altitude > 7);
-  assert.ok(p.back > 3.2);
+  assert.ok(p.back < 3.2);
 });
 test("touch stimulation addresses four units in the correct body region", () => {
   for (const [index, region] of TOUCH_REGIONS.entries()) {
@@ -273,19 +275,36 @@ test("repeated wall contact triggers clearance callbacks without launching far a
     field = { cast: () => ({ t: 0, normal: [-1, 0, 0], penetration: 0 }) };
   let clearance = 0;
   p.step(
-    4,
+    8,
     0,
     field,
     () => 0,
     0,
     0,
-    1,
+    2,
     (e) => {
       if (e.escape) clearance++;
     },
   );
   assert.ok(clearance > 0);
   assert.equal(p.escapes, 1);
-  assert.ok(p.altitude < 10);
+  assert.ok(p.altitude < 13);
+  assert.ok(p.u > 15);
   assert.equal(p.manualHeight, 0);
+});
+
+test("distance sensing climbs before touching an obstacle and sustained diving keeps ground clearance", () => {
+  const field = new CollisionField(),
+    p = new FlightPhysics(0, 10, 7);
+  field.replace("ahead", [
+    { u: 10, v: 10, y: 7, su: 1, sv: 4, sy: 3, kind: 1 },
+  ]);
+  p.step(0.6, 0, field, () => 0, 0, 0, 0.3);
+  assert.equal(p.contacts, 0);
+  assert.ok(p.altitude > 7);
+  assert.ok(p.avoidance > 0);
+  const floor = new FlightPhysics(0, 0, 7);
+  for (let i = 0; i < 200; i++)
+    floor.step(0.1, 0, new CollisionField(), () => 0, i * 0.1, -1, 0.05);
+  assert.ok(floor.altitude >= 2.49);
 });

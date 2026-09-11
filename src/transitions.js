@@ -6,7 +6,16 @@ export function voxelScale(life, now) {
   return life[1] + (life[2] - life[1]) * t * t * (3 - 2 * t);
 }
 export const voxelKey = (b) =>
-  [b.u, b.v, b.y, b.su, b.sv, b.sy, b.kind, b.color].join("|");
+  [
+    b.u,
+    b.v,
+    b.y,
+    b.su,
+    b.sv,
+    b.sy,
+    b.kind,
+    b.kind === 0 || b.kind === 2 ? "ground" : b.color,
+  ].join("|");
 /** One instanced draw for all outgoing cubes; growth stays in the chunk shader. */
 export class VoxelTransitions {
   constructor(world) {

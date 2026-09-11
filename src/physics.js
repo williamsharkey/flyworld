@@ -32,7 +32,7 @@ export function sweptBox(
   wallTime = Infinity,
 ) {
   const float =
-    box.kind === 3 ? Math.sin(time * 1.5 + box.rootV * 0.15) * 0.8 : 0;
+    box.kind === 3 ? Math.sin(time * 0.22 + box.rootV * 0.15) * 0.18 : 0;
   const center = [
     delta(box.u, start.u, WORLD.length),
     delta(box.v, start.v, WORLD.width),
@@ -273,6 +273,9 @@ export class FlightPhysics {
     this.nextEscapeAt = 0;
     this.nextLiftAt = 0;
     this.nextClearAt = 0;
+    this.phaseUntil = -Infinity;
+    this.contactLift = 0;
+    this.avoidance = 0;
   }
   registerContact(now) {
     this.recentContacts = this.recentContacts.filter((t) => now - t <= 2);
@@ -303,13 +306,34 @@ export class FlightPhysics {
     onContact = () => {},
   ) {
     const events = [];
+    const direction = { u: Math.cos(this.heading), v: Math.sin(this.heading) };
+    const sensed = field.cast(
+      { u: this.u + direction.u, v: this.v + direction.v, y: this.altitude },
+      {
+        u: this.u + direction.u * 14,
+        v: this.v + direction.v * 14,
+        y: this.altitude,
+      },
+      0.8,
+      time,
+    );
+    const roof = sensed?.box
+      ? sensed.box.y + sensed.box.sy / 2 + 1.6
+      : -Infinity;
+    const floor = Math.max(WORLD.seaLevel, height(this.u, this.v));
+    const avoidTarget = Number.isFinite(roof)
+      ? clamp(roof - Math.max(floor + 7 + this.manualHeight, floor + 2.5), 0, 8)
+      : 0;
     let remaining = dt;
     while (remaining > 1e-8) {
       const step = Math.min(0.035, remaining);
       remaining -= step;
       time += step;
       this.contactClock += dt > 0 ? (step * realDt) / dt : 0;
-      this.cooldown -= step;
+      this.cooldown -= dt > 0 ? (step * realDt) / dt : 0;
+      this.contactLift *= Math.exp(-(dt > 0 ? (step * realDt) / dt : 0) / 2);
+      this.avoidance +=
+        (avoidTarget - this.avoidance) * (1 - Math.exp(-step / 0.7));
       this.heading += headingRate(bias) * step;
       const c = Math.cos(this.heading),
         s = Math.sin(this.heading),
@@ -331,12 +355,23 @@ export class FlightPhysics {
         24,
       );
       if (Math.abs(vertical) < 0.01) this.manualHeight *= Math.exp(-step / 9);
-      const dy =
-        (ahead + 7 + this.manualHeight - this.altitude) *
-          (1 - Math.exp(-step / 1.2)) +
-        this.lift * step;
+      const targetAltitude =
+        Math.max(
+          ahead + 7 + this.manualHeight,
+          Math.max(WORLD.seaLevel, height(this.u, this.v)) + 2.5,
+        ) +
+        this.avoidance +
+        this.contactLift;
+      const dy = clamp(
+        (targetAltitude - this.altitude) * (1 - Math.exp(-step / 1.2)) +
+          this.lift * step,
+        -5 * step,
+        6 * step,
+      );
       let earliest = null;
-      for (const probe of flyProbes(this.heading, time * TAU * 11)) {
+      for (const probe of this.contactClock < this.phaseUntil
+        ? []
+        : flyProbes(this.heading, time * TAU * 11)) {
         const start = {
             u: this.u + probe.u,
             v: this.v + probe.v,
@@ -349,9 +384,10 @@ export class FlightPhysics {
       }
       let fraction = 1;
       if (earliest) {
-        fraction = Math.max(0, earliest.t - 0.01);
-        const [nu, nv, ny] = earliest.normal,
-          push = Math.min(0.6, earliest.penetration + 0.06);
+        fraction = 0.85;
+        const [nu, nv, ny] = earliest.normal;
+        this.phaseUntil = this.contactClock + 0.9;
+        this.contactLift = Math.max(this.contactLift, 2.4);
         const impact = {
           u: wrap(
             this.u +
@@ -373,16 +409,14 @@ export class FlightPhysics {
             dy * earliest.t -
             ny * earliest.probe.radius,
         };
-        this.u += nu * push;
-        this.v += nv * push;
-        this.altitude += ny * push;
+
         if (this.cooldown <= 0) {
-          this.back = 10;
+          this.back = Math.max(this.back, 1.1);
           if (this.contactClock >= this.nextLiftAt) {
-            this.lift = Math.max(this.lift, 0.8);
+            this.lift = Math.max(this.lift, 1.6);
             this.nextLiftAt = this.contactClock + 0.875;
           }
-          this.cooldown = 0.7;
+          this.cooldown = 0.4;
           this.contacts++;
           this.lastContact = earliest.probe.region;
           const escape = this.registerContact(this.contactClock);
@@ -402,11 +436,7 @@ export class FlightPhysics {
       }
       this.u = wrap(this.u + du * fraction, WORLD.length);
       this.v = wrap(this.v + dv * fraction, WORLD.width);
-      this.altitude +=
-        dy *
-        (earliest && earliest.normal[2] < 0
-          ? fraction
-          : Math.max(fraction, dy > 0 ? 0.7 : 0));
+      this.altitude += dy;
       this.distance += Math.hypot(du * fraction, dv * fraction);
       this.back *= Math.exp(-step / 1.1);
       this.lift *= Math.exp(-step / 0.8);

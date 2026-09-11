@@ -140,7 +140,13 @@ export class Ecosystem {
         version: 0,
       });
     }
-    return this.patches.get(key);
+    const patch = this.patches.get(key);
+    if (!patch.terrain)
+      patch.terrain = Object.freeze({
+        elevation: patch.elevation,
+        ruggedness: patch.ruggedness,
+      });
+    return patch;
   }
   baseHeight(u, v) {
     const a = (wrap(u, WORLD.length) / WORLD.length) * TAU;
@@ -159,7 +165,7 @@ export class Ecosystem {
     );
   }
   terrainHeight(u, v) {
-    // Smooth interpolation of periodic elevation genes avoids patch-border cracks.
+    // Terrain traits are fixed at creation; evolution never moves the ground.
     u = wrap(u, WORLD.length) / 16;
     v = wrap(v, WORLD.width) / 16;
     const a = Math.floor(u),
@@ -172,8 +178,8 @@ export class Ecosystem {
       r = this.patch(a, b + 1),
       t = this.patch(a + 1, b + 1);
     const blend = (key) =>
-      (p[key] * (1 - x) + q[key] * x) * (1 - y) +
-      (r[key] * (1 - x) + t[key] * x) * y;
+      (p.terrain[key] * (1 - x) + q.terrain[key] * x) * (1 - y) +
+      (r.terrain[key] * (1 - x) + t.terrain[key] * x) * y;
     const detail = Math.sin(
       ((u * 16) / WORLD.length) * TAU * 19 + ((v * 16) / WORLD.width) * TAU * 9,
     );

@@ -1,46 +1,21 @@
 // Original composition: Wandering Light. MIDI note numbers, not sampled audio.
-export const SCORE = { title: "Wandering Light", bpm: 72, beats: 128 };
-const chords = [
-  [50, 57, 60, 64, 69],
-  [55, 59, 62, 64, 69],
-  [48, 55, 59, 62, 67],
-  [52, 59, 62, 66, 69],
-  [53, 60, 64, 67, 72],
-  [50, 57, 60, 64, 69],
-  [57, 60, 64, 67, 71],
-  [55, 62, 65, 69, 74],
-  [50, 57, 60, 65, 69],
-  [53, 60, 64, 67, 71],
-  [48, 55, 59, 64, 67],
-  [55, 59, 62, 67, 69],
-  [57, 60, 64, 67, 71],
-  [52, 59, 62, 66, 69],
-  [53, 60, 64, 67, 72],
-  [55, 60, 62, 67, 69],
-];
+export const SCORE = { title: "Wandering Light", bpm: 75, beats: 128 };
+// D-minor pedal harmony keeps the half-time calm score related to the firing groove.
+const colors = [[50, 57, 60, 64, 69], [50, 57, 60, 65, 69],
+  [50, 57, 62, 65, 69], [50, 57, 60, 64, 67]];
+const chords = Array.from({ length: 16 }, (_, bar) => colors[Math.floor(bar / 2) % 4]);
 export function scoreEvents() {
   const events = [];
   chords.forEach((chord, bar) => {
     const beat = bar * 8;
     chord.forEach((note) =>
-      events.push({ beat, note, duration: 7.8, velocity: 50, part: "pad" }),
-    );
-    events.push({
-      beat,
-      note: chord[0] - 12,
-      duration: 6.7,
-      velocity: 54,
-      part: "bass",
-    });
-    [0, 2, 4, 3, 1, 4].forEach((degree, i) =>
-      events.push({
-        beat: beat + [0, 1.5, 3, 4, 5.5, 7][i],
-        note: chord[degree] + 12,
-        duration: 1.6,
-        velocity: 32 + (i % 3) * 5,
-        part: "arp",
-      }),
-    );
+      events.push({ beat, note, duration: 7.8, velocity: 44, part: "pad" }));
+    [0, 1, 1.5, 2, 3, 4, 5, 5.5, 6, 7].forEach((offset, i) =>
+      events.push({ beat: beat + offset, note: 38 + (i === 6 ? 12 : 0),
+        duration: offset % 1 ? 0.2 : 0.42, velocity: offset % 1 ? 33 : 46, part: "bass" }));
+    [0, 2, 1, 2].forEach((degree, i) =>
+      events.push({ beat: beat + [0.5, 2.5, 4.5, 6.5][i],
+        note: chord[degree] + 12, duration: 0.45, velocity: 29 + (i % 2) * 5, part: "arp" }));
     // A sparse, independently composed answering phrase, with room for the view.
     if (bar % 2 === 1)
       [2, 4, 1].forEach((degree, i) =>
@@ -48,7 +23,7 @@ export function scoreEvents() {
           beat: beat + [1, 3.5, 6][i],
           note: chord[degree] + 12,
           duration: 2.2,
-          velocity: 42,
+          velocity: 32,
           part: "bell",
         }),
       );
