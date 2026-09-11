@@ -1,3 +1,4 @@
+import { sunDirection } from "./lighting.js";
 import { VoxelTransitions, voxelKey } from "./transitions.js";
 import * as THREE from "three";
 import {
@@ -77,6 +78,9 @@ export class FlyWorld {
     this.pixelRatio = Math.min(devicePixelRatio, 1.5);
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
@@ -89,7 +93,7 @@ export class FlyWorld {
       0.1,
       420,
     );
-    this.eyeCamera = new THREE.PerspectiveCamera(105, 1, 0.1, 180);
+    this.eyeCamera = new THREE.PerspectiveCamera(105, 1, 0.1, 420);
     this.eyeTarget = new THREE.WebGLRenderTarget(30, 30, {
       minFilter: THREE.NearestFilter,
       magFilter: THREE.NearestFilter,
@@ -104,7 +108,8 @@ export class FlyWorld {
       uFlyV: { value: this.v },
       uHeading: { value: 0 },
     };
-    this.material = new THREE.MeshLambertMaterial();
+    // Fragment derivatives shade the actual bent faces, including the local twist.
+    this.material = new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true });
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms);
       shader.vertexShader =
@@ -136,6 +141,9 @@ export class FlyWorld {
     gl_Position=projectionMatrix*mvPosition;
    `,
       );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <worldpos_vertex>", "vec4 worldPosition = modelMatrix * wp;"
+      );
       shader.fragmentShader =
         "uniform float uTime; varying float vWater;\n" + shader.fragmentShader;
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -143,21 +151,29 @@ export class FlyWorld {
         "#include <color_fragment>\n if(vWater>.5)diffuseColor.rgb*=.93+.12*sin(gl_FragCoord.x*.07+gl_FragCoord.y*.04+uTime*1.6);",
       );
     };
-    this.scene.add(new THREE.HemisphereLight("#fff0cc", "#465945", 1.9));
-    const light = new THREE.DirectionalLight("#ffdeb0", 2.3);
-    light.position.set(-70, 100, -70);
-    this.scene.add(light);
-    const fill = new THREE.DirectionalLight("#becac0", 0.7);
-    fill.position.set(60, 30, 20);
-    this.scene.add(fill);
+    this.depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+    // Shadow casters use the exact same torus deformation and per-cube lifecycle.
+    this.depthMaterial.onBeforeCompile = this.material.onBeforeCompile;
+    this.hemisphere = new THREE.HemisphereLight("#fff0cc", "#465945", 1.9);
+    this.scene.add(this.hemisphere);
+    this.sunLight = new THREE.DirectionalLight("#ffdeb0", 2.3);
+    this.sunLight.castShadow = true;
+    this.sunLight.shadow.mapSize.set(1024, 1024);
+    Object.assign(this.sunLight.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 260 });
+    this.sunLight.shadow.bias = -0.0004;
+    this.sunLight.shadow.normalBias = 0;
+    this.scene.add(this.sunLight, this.sunLight.target);
     this.createSky();
     this.createFly();
+    this.observer.traverse(o => { if (o.isMesh) { o.castShadow = !o.material.transparent; o.receiveShadow = true; } });
     this.createParticles();
     this.fauna = new Fauna(
       this.scene,
       (u, v, h) => this.project(u, v, h),
       (u, v) => this.height(u, v),
     );
+    this.fauna.mesh.castShadow = true;
+    this.fauna.mesh.receiveShadow = true;
     this.arcade = new Arcade(this);
     this.transitions = new VoxelTransitions(this);
     this.updateChunks(true);
@@ -193,12 +209,14 @@ export class FlyWorld {
       ";#include",
       ";\n#include",
     );
+    this.sky = sky;
     this.scene.add(sky);
     const sun = new THREE.Mesh(
       new THREE.SphereGeometry(11, 32, 16),
       new THREE.MeshBasicMaterial({ color: "#ffe7b9", fog: false }),
     );
-    sun.position.set(33, 8, -250);
+    this.sun = sun;
+    sun.material.depthWrite = false;
     this.scene.add(sun);
     const halo = new THREE.Mesh(
       new THREE.PlaneGeometry(100, 100),
@@ -212,9 +230,29 @@ export class FlyWorld {
           "varying vec2 vUv;void main(){float d=distance(vUv,vec2(.5));gl_FragColor=vec4(1.,.83,.56,pow(max(0.,1.-d*2.),3.)*.24);}",
       }),
     );
-    halo.position.copy(sun.position).add(new THREE.Vector3(0, 0, 12));
+    this.sunHalo = halo;
+    halo.position.copy(sun.position);
     halo.lookAt(0, 0, 0);
     this.scene.add(halo);
+  }
+  updateLighting() {
+    const anchor = this.observer.position, direction = sunDirection(this.u, this.v, this.heading, this.centerV);
+    this.sunVector = direction;
+    this.sunLight.target.position.copy(anchor);
+    this.sunLight.position.copy(anchor).addScaledVector(direction, 120);
+    this.sun.position.copy(anchor).addScaledVector(direction, 280);
+    this.sunHalo.position.copy(anchor).addScaledVector(direction, 275);
+    this.sunHalo.lookAt(this.camera.position);
+    this.sky.position.copy(anchor);
+    const daylight = THREE.MathUtils.smoothstep(direction.y, -0.18, 0.15);
+    this.sunLight.intensity = 2.3 * daylight;
+    this.hemisphere.intensity = 0.65 + 1.25 * daylight;
+    this.sky.material.uniforms.top.value.set("#26384e").lerp(new THREE.Color("#819c9b"), daylight);
+    this.sky.material.uniforms.bottom.value.set("#727778").lerp(new THREE.Color("#e4c9a2"), daylight);
+    this.scene.fog.color.set("#626c72").lerp(new THREE.Color("#b7bca2"), daylight);
+    this.scene.background.copy(this.scene.fog.color);
+    this.sunLight.castShadow = daylight > 0.02;
+    this.renderer.shadowMap.needsUpdate = true;
   }
   createFly() {
     this.observer = new THREE.Group();
@@ -423,6 +461,8 @@ export class FlyWorld {
     const mesh =
       old || new THREE.InstancedMesh(box.clone(), this.material, 2200);
     mesh.frustumCulled = false;
+    mesh.receiveShadow = true;
+    mesh.customDepthMaterial = this.depthMaterial;
     mesh.count = 0;
     if (!old)
       mesh.geometry.setAttribute(
@@ -734,6 +774,9 @@ export class FlyWorld {
     this.uniforms.uFlyV.value = this.v;
     this.uniforms.uHeading.value = this.heading;
     this.updateChunks();
+    for (const mesh of this.chunks.values()) mesh.castShadow = Math.hypot(
+      delta(mesh.userData.u * 16 + 8, this.u, WORLD.length),
+      delta(mesh.userData.v * 16 + 8, this.v, WORLD.width)) < 85;
     const pos = this.project(this.u, this.v, this.altitude);
     this.observer.position.copy(pos);
     this.fly.position.set(
@@ -777,6 +820,7 @@ export class FlyWorld {
       cameraDt === 0 ? 1 : 1 - Math.exp(-cameraDt * 2.5),
     );
     this.camera.lookAt(target);
+    this.updateLighting();
     this.observer.visible = this.cameraMode !== 2;
     this.eyeCamera.position.copy(pos).add(new THREE.Vector3(0, 0.3, -1.4));
     this.eyeCamera.lookAt(
@@ -803,7 +847,9 @@ export class FlyWorld {
     this.renderer.render(this.scene, this.camera);
   }
   sense() {
-    const visible = this.observer.visible;
+    const visible = this.observer.visible, shadowUpdate = this.renderer.shadowMap.needsUpdate;
+    // The main view updates shadows with the fly present; eye readback reuses them.
+    this.renderer.shadowMap.needsUpdate = false;
     this.observer.visible = false;
     this.renderer.setRenderTarget(this.eyeTarget);
     this.renderer.render(this.scene, this.eyeCamera);
@@ -817,6 +863,7 @@ export class FlyWorld {
     );
     this.renderer.setRenderTarget(null);
     this.observer.visible = visible;
+    this.renderer.shadowMap.needsUpdate = shadowUpdate;
     return this.pixels;
   }
   resize() {

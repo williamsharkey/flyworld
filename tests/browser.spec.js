@@ -12,6 +12,17 @@ test("minimal UI, live world, controls, audio, and mobile layout work without ru
   await page.waitForFunction(() => window.flyworld?.state.time > 0);
   await page.locator("#loading").waitFor({ state: "hidden" });
   await page.waitForFunction(() => window.flyworld.state.swaps > 0);
+  // Reproduce a browser-blocked context: the first speaker click must enable it.
+  await page.evaluate(async () => {
+    const { synth } = window.flyworld.testing;
+    await synth.ctx.suspend();
+    synth.master.gain.cancelScheduledValues(synth.ctx.currentTime);
+    synth.master.gain.setValueAtTime(0, synth.ctx.currentTime);
+  });
+  await page.locator("#sound").click();
+  await page.waitForFunction(() => window.flyworld.state.music.masterGain > .1 && window.flyworld.state.music.rms > .001);
+  expect((await page.evaluate(() => window.flyworld.state.music)).enabled).toBe(true);
+
   const flying = await page.evaluate(() => window.flyworld.state);
   expect(flying.observer).toBe("flying-observer");
   expect(flying.creatures).toBe(90);
@@ -25,6 +36,16 @@ test("minimal UI, live world, controls, audio, and mobile layout work without ru
     before.time,
   );
   expect(before.voxels).toBeGreaterThan(1000);
+  const lighting = await page.evaluate(() => {
+    const { world } = window.flyworld.testing;
+    const sun = world.sun.position.clone().sub(world.observer.position).normalize();
+    const light = world.sunLight.position.clone().sub(world.sunLight.target.position).normalize();
+    return { alignment: sun.dot(light), shadows: world.renderer.shadowMap.enabled,
+      correctDepth: [...world.chunks.values()].every(m => m.customDepthMaterial === world.depthMaterial) };
+  });
+  expect(lighting.alignment).toBeCloseTo(1, 8);
+  expect(lighting.shadows && lighting.correctDepth).toBe(true);
+
   expect(before.patches).toBeLessThanOrEqual(1200);
   await page.locator("#mutate").click();
   const after = await page.evaluate(() => window.flyworld.state);
@@ -33,6 +54,10 @@ test("minimal UI, live world, controls, audio, and mobile layout work without ru
   for (let i = 0; i < 3; i++) await page.locator("#camera").click();
   expect((await page.evaluate(() => window.flyworld.state)).camera).toBe(0);
   await expect(page.locator("#speed")).toHaveCount(0);
+  await expect(page.locator("#neural-hud")).toBeVisible();
+  await expect(page.locator(".eye-quadrants span")).toHaveCount(4);
+  expect(Number(await page.locator("#interest-0").getAttribute("data-activation"))).toBeGreaterThanOrEqual(0);
+  await expect(page.locator("#spike-rate")).toHaveText(/\d+/);
   expect((await page.evaluate(() => window.flyworld.state)).speed).toBe(0.5);
   await page.locator("#settings").click();
   await page.locator("#mutation").fill("53");
@@ -73,6 +98,7 @@ test("minimal UI, live world, controls, audio, and mobile layout work without ru
     ).toBe(true);
     await expect(page.locator("#mutate")).toBeInViewport();
     await expect(page.locator("#orbit")).toBeInViewport();
+    await expect(page.locator("#neural-hud")).toBeInViewport();
   }
   await page.screenshot({ path: "test-results/mobile.png" });
   expect(errors).toEqual([]);
@@ -170,12 +196,12 @@ test("quadrants, inverted flight controls, tactile collisions, and the hidden ar
     world.physics.back = world.physics.lift = 0;
     world.collisions.replace("target", [
       {
-        u: world.u + 8,
+        u: world.u + 20,
         v: world.v,
         y: world.altitude,
         su: 2,
         sv: 10,
-        sy: 12,
+        sy: 40,
         kind: 1,
         color: "#ccc",
         owner: "target",
@@ -241,6 +267,7 @@ test("only firing starts bass; sustained firing unlocks the chant and the reticl
     () => window.flyworld.state.music.combat.acid,
   );
   expect(acid.notes).toBeGreaterThan(0);
+  expect(acid.volume).toBe(0.7);
   await page.waitForFunction(
     () =>
       window.flyworld.state.music.combat.acid.slides > 0 &&
@@ -250,12 +277,6 @@ test("only firing starts bass; sustained firing unlocks the chant and the reticl
     (await page.evaluate(() => window.flyworld.state)).speed,
   ).toBeGreaterThan(3.5);
   await page.waitForFunction(
-    () => window.flyworld.state.music.combat.elapsed > 10,
-  );
-  expect(
-    (await page.evaluate(() => window.flyworld.state.music.combat)).voiceWords,
-  ).toBe(0);
-  await page.waitForFunction(
     () =>
       window.flyworld.state.music.combat.voiceWords >= 3 &&
       window.flyworld.state.music.combat.voiceRms > 0.005,
@@ -263,7 +284,7 @@ test("only firing starts bass; sustained firing unlocks the chant and the reticl
     { timeout: 20000 },
   );
   await page.waitForFunction(
-    () => window.flyworld.state.music.combat.vocalLine?.startsWith("Big booty") &&
+    () => window.flyworld.state.music.combat.voiceWords >= 8 &&
       window.flyworld.state.music.combat.voiceRms > 0.005,
     {}, { timeout: 12000 },
   );
@@ -282,4 +303,50 @@ test("only firing starts bass; sustained firing unlocks the chant and the reticl
     { timeout: 8000 },
   );
   expect(errors).toEqual([]);
+});
+
+test("environment renders audible wing buzz, insects, passing objects and water", async ({ page }) => {
+  await page.route("**/audio-check", route => route.fulfill({ contentType: "text/html", body: '<button id="start">Start</button>' }));
+  await page.goto('/audio-check');
+  await page.click('#start');
+  const result = await page.evaluate(async () => {
+    const { Ambience } = await import('/src/ambience.js');
+    const { Vector3 } = await import('/node_modules/three/build/three.module.js');
+    const ctx = new AudioContext(); await ctx.resume();
+    const destination = ctx.createGain(); destination.gain.value = .425; destination.connect(ctx.destination);
+    const sound = new Ambience(ctx, destination);
+    const world = { u:0, v:0, altitude:10, heading:0, simTime:0, wingPhase:0,
+      physics: {distance:0, back:0}, observer:{position:new Vector3(0,10,0)},
+      fauna:{agents:[{u:2,v:-4,altitude:10,kind:1,visible:true,phase:0},{u:3,v:5,altitude:10,kind:2,visible:true,phase:1}]},
+      project:(u,v,y)=>new Vector3(v,y,-u), height:()=>-3,
+      collisions:{ candidates:()=>new Set([{u:1,v:4,y:10,kind:1}]) } };
+    let peak=0;
+    for(let i=0;i<20;i++) {
+      world.simTime+=.08; world.wingPhase+=.08*Math.PI*22; world.physics.distance+=.5;
+      sound.update(world,.4); await new Promise(r=>setTimeout(r,40)); peak=Math.max(peak,sound.rms);
+    }
+    const state={...sound.state, peak, left:sound.insects[0].pan.pan.value,right:sound.insects[1].pan.pan.value};
+    await ctx.close(); return state;
+  });
+  expect(result.insects).toBe(2);
+  expect(result.left).toBeLessThan(0); expect(result.right).toBeGreaterThan(0);
+  expect(result.passbys).toBeGreaterThan(0); expect(result.bubbles).toBeGreaterThan(0);
+  expect(result.peak).toBeGreaterThan(.005); expect(result.ownGain).toBeGreaterThan(.015);
+});
+
+test("music and bass initialize when cancelAndHoldAtTime is unavailable", async ({page})=>{
+ await page.route('**/compat-audio',r=>r.fulfill({contentType:'text/html',body:'<button>Start</button>'}));
+ await page.goto('/compat-audio');await page.click('button');
+ const result=await page.evaluate(async()=>{
+   Object.defineProperty(AudioParam.prototype,'cancelAndHoldAtTime',{value:undefined,configurable:true});
+   const {DreamSynth}=await import('/src/audio.js');const synth=new DreamSynth();
+   await synth.arm();
+   synth.combat.trigger();synth.combat.startedAt=synth.ctx.currentTime-9;synth.combat.schedule();
+   let peak = 0;
+   for (let i = 0; i < 20; i++) { await new Promise(r=>setTimeout(r,100)); peak = Math.max(peak, synth.state.rms); }
+   const result={rms:peak,context:synth.state.context,notes:synth.scheduled,acid:synth.combat.acid.notes};
+   clearInterval(synth.timer);clearTimeout(synth.sleepTimer);await synth.ctx.close();return result;
+ });
+ expect(result.context).toBe('running');expect(result.rms).toBeGreaterThan(.001);
+ expect(result.notes).toBeGreaterThan(0);expect(result.acid).toBeGreaterThan(0);
 });

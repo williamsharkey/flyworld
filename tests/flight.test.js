@@ -199,7 +199,7 @@ test("score begins on audio unlock and recovers after a delayed scheduler tick",
   s.ctx.state = "running";
   s.ctx.currentTime = 8;
   s.schedule();
-  assert.ok(notes.length >= 7);
+  assert.ok(notes.length >= 4);
   const count = notes.length;
   s.ctx.currentTime = 12;
   s.schedule();

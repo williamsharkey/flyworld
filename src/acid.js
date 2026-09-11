@@ -1,3 +1,6 @@
+import { holdNow } from "./audio-param.js";
+import { modalNote } from "./opus.js";
+import { ACID_VOLUME } from "./music-evolution.js";
 export const ACID_DELAY = 8;
 export const ACID_PATTERN = [
   { note: 38, accent: true },
@@ -55,6 +58,8 @@ export class AcidBass {
     this.highpass.frequency.value = 55;
     this.gate = ctx.createGain();
     this.gate.gain.value = 0;
+    this.output = ctx.createGain();
+    this.output.gain.value = ACID_VOLUME;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 512;
     this.osc
@@ -63,8 +68,9 @@ export class AcidBass {
       .connect(this.drive)
       .connect(this.highpass)
       .connect(this.gate)
+      .connect(this.output)
       .connect(destination);
-    this.gate.connect(this.analyser);
+    this.output.connect(this.analyser);
     this.osc.start();
     this.reset();
   }
@@ -84,11 +90,11 @@ export class AcidBass {
       this.pole.frequency,
       this.gate.gain,
     ])
-      param.cancelAndHoldAtTime(now);
+      holdNow(param, now);
     this.gate.gain.setTargetAtTime(0, now, 0.045);
     this.connected = false;
   }
-  step(index, time, tick) {
+  step(index, time, tick, variation = null, phase = null) {
     const note = ACID_PATTERN[index % ACID_PATTERN.length],
       next = ACID_PATTERN[(index + 1) % ACID_PATTERN.length];
     if (!note) {
@@ -96,7 +102,10 @@ export class AcidBass {
       this.connected = false;
       return;
     }
-    const f = 440 * 2 ** ((note.note - 69) / 12),
+    const pitch = variation && !note.tie && variation.chance(0.12 + variation.color * 0.18)
+        ? variation.choose(note.note + 7, note.note + 12) : note.note;
+    const mapped = phase ? modalNote(pitch, phase, variation.rng) : pitch;
+    const f = 440 * 2 ** ((mapped - 69) / 12),
       legato = this.connected && note.tie,
       slide = this.connected && note.slide;
     if (slide) {
@@ -142,6 +151,7 @@ export class AcidBass {
     const samples = new Float32Array(512);
     this.analyser.getFloatTimeDomainData(samples);
     return {
+      volume: ACID_VOLUME,
       notes: this.notes,
       ties: this.ties,
       slides: this.slides,

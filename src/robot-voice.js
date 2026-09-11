@@ -1,9 +1,9 @@
 // A small source/filter phoneme synthesizer: pitched glottal pulses, three
 // moving formants, and noise consonants. No speech service, samples or downloads.
 export const CHANT = "tear da club up, tear da fucking club up";
-export const CHANT_BEATS = 4;
+export const CHANT_BEATS = 8;
 export const VOICE_VOLUME = 0.7;
-// Original eight-bar verse. Each token is an eighth-note syllable, not TTS.
+// Twenty-four original lines, each spread across two bars with breathing room.
 export const VERSE_LINES = [
   ["Big booty fruit flies, shake that rind", "big boo ty fruit flies shake that rind"],
   ["Wash that ass, leave the funk behind", "wash that ass leave the funk be hind"],
@@ -13,11 +13,27 @@ export const VERSE_LINES = [
   ["Say hell yes, or it's no such luck", "say hell yes or it's no such luck"],
   ["Soap up wings, let the water run", "soap up wings let the wa ter run"],
   ["Back to bass till the break of sun", "back to bass till the break of sun"],
+  ["Chrome green wings with a fresh-cut shine", "chrome green wings with a fresh cut shine"],
+  ["Sweet juice drips from a late-night grind", "sweet juice drips from a late night grind"],
+  ["Trash-can queens on a moonlit ride", "trash can queens on a moon lit ride"],
+  ["Bad-ass bugs with the bass inside", "bad ass bugs with the bass in side"],
+  ["Turn that peach till the whole tree shakes", "turn that peach till the whole tree shakes"],
+  ["Drop down low when the kick drum breaks", "drop down low when the kick drum breaks"],
+  ["Wet wings dry in the hot pink light", "wet wings dry in the hot pink light"],
+  ["Fresh as fuck on a late-night flight", "fresh as fuck on a late night flight"],
+  ["Big red eyes see the whole room spin", "big red eyes see the whole room spin"],
+  ["One more rinse then we all go in", "one more rinse then we all go in"],
+  ["Fruit bowl freaks with a six-leg strut", "fruit bowl freaks with a six leg strut"],
+  ["Shake that peach with your big round butt", "shake that peach with your big round butt"],
+  ["Bass so thick make the glass jars hum", "bass so thick make the glass jars hum"],
+  ["Fly that ass where the wild bugs come", "fly that ass where the wild bugs come"],
+  ["Clean wings up and the lights down low", "clean wings up and the lights down low"],
+  ["Whole swarm hot when the night winds blow", "whole swarm hot when the night winds blow"],
 ];
 export const VERSE_BARS = VERSE_LINES.map(([text, syllables]) => ({
   text,
   words: syllables.split(" ").map((word, i) => ({
-    beat: i * 0.5, word, note: [50, 50, 48, 50, 50, 48, 45, 45][i],
+    beat: [0, 0.75, 1.5, 2.5, 4, 4.75, 5.5, 6.5][i], word, note: [50, 50, 48, 50, 50, 48, 45, 45][i],
   })),
 }));
 export const CHANT_WORDS = [
@@ -32,12 +48,12 @@ export const CHANT_WORDS = [
   { beat: 3, word: "club", note: 48 },
   { beat: 3.5, word: "up", note: 45 },
 ];
-// Two hook bars, eight verse bars, two hook bars; restart with each firing session.
+// Four verse lines, then one hook; six distinct groups before the cycle repeats.
 export function vocalBar(loop) {
-  const bar = loop % 12;
-  return bar >= 2 && bar < 10
-    ? VERSE_BARS[bar - 2]
-    : { text: CHANT, words: CHANT_WORDS };
+  const slot = loop % 30;
+  return slot % 5 === 4
+    ? { text: CHANT, words: CHANT_WORDS.map(w => ({ ...w, beat: w.beat * 2 })) }
+    : VERSE_BARS[Math.floor(slot / 5) * 4 + slot % 5];
 }
 const vowels = {
   air: [600, 1750, 2450],
@@ -82,6 +98,25 @@ const syllables = {
   ],
 };
 const versePhonemes = {
+  chrome: "k r oh m", green: "g r ee n", with: "w ih th", a: "uh",
+  fresh: "f r eh sh", cut: "k uh t", shine: "sh ah ee n",
+  sweet: "s w ee t", juice: "j oo s", drips: "d r ih p s", from: "f r uh m",
+  late: "l eh ee t", night: "n ah ee t", grind: "g r ah ee n d",
+  trash: "t r ae sh", can: "k ae n", queens: "k w ee n z", on: "ah n",
+  moon: "m oo n", lit: "l ih t", ride: "r ah ee d", bad: "b ae d",
+  bugs: "b uh g z", in: "ih n", side: "s ah ee d", turn: "t uh r n",
+  tree: "t r ee", shakes: "sh eh ee k s", drop: "d r ah p", down: "d ah oo n",
+  when: "w eh n", kick: "k ih k", drum: "d r uh m", breaks: "b r eh ee k s",
+  wet: "w eh t", dry: "d r ah ee", hot: "h ah t", pink: "p ih ng k", light: "l ah ee t",
+  as: "ae z", flight: "f l ah ee t", red: "r eh d", eyes: "ah ee z",
+  see: "s ee", room: "r oo m", spin: "s p ih n", one: "w uh n", more: "m aw r",
+  rinse: "r ih n s", then: "th eh n", we: "w ee", all: "aw l", go: "g oh",
+  bowl: "b oh l", freaks: "f r ee k s", leg: "l eh g", strut: "s t r uh t",
+  your: "y aw r", round: "r ah oo n d", butt: "b uh t", so: "s oh",
+  thick: "th ih k", glass: "g l ae s", jars: "j ah r z", hum: "h uh m",
+  fly: "f l ah ee", where: "w air", wild: "w ah ee l d", come: "k uh m",
+  clean: "k l ee n", and: "ae n d", lights: "l ah ee t s", winds: "w ih n d z", blow: "b l oh",
+
   big: "b ih g", boo: "b oo", ty: "t ee", fruit: "f r oo t",
   flies: "f l ah ee z", shake: "sh eh ee k", that: "th ae t", rind: "r ah ee n d",
   wash: "w aw sh", ass: "ae s", leave: "l ee v", the: "th uh",

@@ -1,3 +1,4 @@
+import { NeuralHud, hudMarkup } from "./hud.js";
 import "./style.css";
 import {
   createIcons,
@@ -34,6 +35,7 @@ const icon = (name, cls = "") =>
 const app = document.querySelector("#app");
 app.innerHTML = `
 <canvas id="world" aria-label="Fly through an evolving voxel world"></canvas>
+${hudMarkup}
 <section class="map-panel" aria-label="Exploration map"><canvas id="orbit" width="480" height="160" aria-label="Explored paths"></canvas><span id="coverage">0.00%</span></section>
 <nav class="controls" aria-label="Simulation controls"><button id="pause" class="control-button primary" title="Pause simulation" aria-label="Pause simulation">${icon("pause")}</button><span class="control-sep"></span><button id="camera" class="control-button active" title="Change camera (C)">${icon("video")}<span class="camera-label" id="camera-label">Follow</span></button><button id="mutate" class="control-button mutate" title="Mutate the landscape ahead (M)">${icon("shuffle")}<span>Mutate</span></button><span class="control-sep"></span><button id="settings" class="control-button icon-only" title="Evolution settings" aria-label="Evolution settings" aria-expanded="false">${icon("sliders-horizontal")}</button><button id="sound" class="control-button icon-only" title="Mute music and ambience" aria-label="Mute music and ambience" aria-pressed="true">${icon("volume-2")}</button><button id="immersive" class="control-button icon-only" title="Screensaver mode (F)" aria-label="Enter screensaver mode">${icon("maximize")}</button></nav>
 <section id="settings-popover" class="settings-popover" hidden><h3>Settings</h3><div class="setting-row"><label for="mutation">Mutation strength</label><output id="mutation-value">55%</output></div><input id="mutation" type="range" min="0" max="80" value="55"/><div class="setting-row"><label for="evolve">Natural selection</label><input class="switch" id="evolve" type="checkbox" checked/></div><div class="setting-row"><label for="autosteer">Visual steering</label><input class="switch" id="autosteer" type="checkbox" checked/></div><div class="setting-row"><label for="music-volume">Volume</label><output id="music-volume-value">50%</output></div><input id="music-volume" type="range" min="0" max="100" value="50"/><a class="midi-link" href="${import.meta.env.BASE_URL}wandering-light.mid" download="wandering-light.mid">Download the original MIDI ↗</a><button id="new-world" class="control-button active" style="width:100%;margin-top:15px">${icon("refresh-cw")} Reseed the world</button></section>
@@ -43,6 +45,7 @@ createIcons({ icons });
 const $ = (id) => document.getElementById(id);
 const synth = new DreamSynth();
 const flightInput = new FlightInput();
+const hud = new NeuralHud();
 const pace = new FlightPace();
 let manualControl = { bias: 0, vertical: 0, active: false, mix: 0 };
 let ecosystem = new Ecosystem(),
@@ -160,16 +163,15 @@ $("exit-immersive").onclick = () => setImmersive(false);
 $("sound").onclick = async () => {
   $("sound").disabled = true;
   try {
-    const on = !synth.enabled;
+    const locked = !paused && synth.enabled && (synth.ctx?.state !== "running" || (synth.master?.gain.value ?? 0) < 0.001);
+    const on = locked || !synth.enabled;
     await synth.setEnabled(on);
     $("sound").setAttribute("aria-pressed", String(on));
     $("sound").setAttribute(
       "aria-label",
       on ? "Mute music and ambience" : "Enable music and ambience",
     );
-    $("sound").title = on
-      ? "Mute Wandering Light"
-      : "Play Wandering Light · original synth score";
+    $("sound").title = on ? "Mute sound" : "Enable sound";
     setButton("sound", on ? "volume-2" : "volume-x");
   } catch {
     toast("Audio is unavailable in this browser.");
@@ -219,13 +221,16 @@ async function unlockAudio(event) {
   if (
     event?.target?.closest?.("#sound") ||
     !synth.enabled ||
-    synth.ctx?.state === "running"
+    (synth.ctx?.state === "running" && (synth.master?.gain.value ?? 0) > 0.001)
   )
     return;
   try {
     await synth.init();
     await synth.sync();
-  } catch {}
+  } catch (error) {
+    synth.error = error.message;
+    toast("Sound could not start. Tap the speaker to retry.");
+  }
 }
 window.addEventListener("pointerdown", unlockAudio, { capture: true });
 window.addEventListener("keydown", unlockAudio, { capture: true });
@@ -233,6 +238,7 @@ function updateUI() {
   $("coverage").textContent =
     `${(world.exploration.coverage * 100).toFixed(2)}%`;
   trailMap.draw();
+  hud.draw(brain);
 }
 let renderUntil = 0,
   renderSignature = "";
@@ -294,6 +300,7 @@ function animate(now) {
   }
   if (senseTime >= 0.1 || !ready) {
     const pixels = world.sense();
+    hud.see(pixels);
     if (!ready) senseTime = 0.1;
     while (senseTime >= 0.1) {
       brain.step(pixels, 0.1);
@@ -358,6 +365,8 @@ window.flyworld = {
       music: synth.state,
       wingAngle: world.wings[0].rotation.z,
       heading: world.heading,
+      sunDirection: world.sunVector?.toArray(),
+      shadows: world.renderer.shadowMap.enabled,
       contacts: world.physics.contacts,
       escapes: world.physics.escapes,
       avoidance: world.physics.avoidance,

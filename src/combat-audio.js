@@ -1,3 +1,6 @@
+import { holdNow } from "./audio-param.js";
+import { opusAt, modalNote } from "./opus.js";
+import { MusicEvolution, QUIET_MUSIC_GAIN } from "./music-evolution.js";
 import { AcidBass, ACID_DELAY } from "./acid.js";
 import { RobotVoice, CHANT_BEATS, VOICE_VOLUME, vocalBar } from "./robot-voice.js";
 import { random } from "./simulation.js";
@@ -6,8 +9,10 @@ export const COMBAT_BPM = 150;
 const bassLine = [0, null, 0, null, 0, null, 12, 0, 0, null, 0, null, 0, null, 7, null];
 /** An original electro / booty-bass groove, synthesized without samples. */
 export class CombatAudio {
-  constructor(ctx, destination, musicGain) {
+  constructor(ctx, destination, musicGain, opusOrigin = () => 0) {
+    this.opusOrigin = opusOrigin;
     this.ctx = ctx;
+    this.variation = new MusicEvolution(Math.floor(Math.random() * 2 ** 32));
     this.musicGain = musicGain;
     this.until = -Infinity;
     this.next = 0;
@@ -39,9 +44,9 @@ export class CombatAudio {
     const now = this.ctx.currentTime,
       fresh = now > this.until;
     this.until = now + 3;
-    this.bus.gain.cancelAndHoldAtTime(now);
+    holdNow(this.bus.gain, now);
     this.bus.gain.setTargetAtTime(0.95, now, 0.035);
-    this.musicGain.gain.cancelAndHoldAtTime(now);
+    holdNow(this.musicGain.gain, now);
     this.musicGain.gain.setTargetAtTime(0.12, now, 0.055);
     if (fresh) {
       this.startedAt = now;
@@ -139,7 +144,7 @@ export class CombatAudio {
     if (now > this.until) {
       if (this.ducked) {
         this.bus.gain.setTargetAtTime(0, now, 0.35);
-        this.musicGain.gain.setTargetAtTime(1, now, 0.7);
+        this.musicGain.gain.setTargetAtTime(QUIET_MUSIC_GAIN, now, 0.7);
         this.ducked = false;
         this.voice.stop();
         this.acid.stop();
@@ -158,25 +163,36 @@ export class CombatAudio {
     while (this.next < Math.min(now + 0.65, this.until)) {
       const t = Math.max(now, this.next),
         s = this.step % 16;
-      if (t - this.startedAt >= ACID_DELAY) this.acid.step(this.step, t, tick);
-      if (s % 4 === 0 || s === (Math.floor(this.step / 16) % 2 ? 14 : 6))
+      const variation = this.variation, phase = opusAt(t - this.opusOrigin());
+      variation.advance(tick);
+      if (t - this.startedAt >= ACID_DELAY) this.acid.step(this.step, t, tick, variation, phase);
+      if ((s % 4 === 0 && variation.chance(s === 0 ? 1 : 0.92)) ||
+          (s % 4 === 2 && variation.chance(0.12 + variation.density * 0.35)))
         this.tone(t, 155, 0.27, 0.55, { end: 43, drive: true });
-      if (s === 4 || s === 12) {
+      if ((s === 4 || s === 12) && variation.chance(0.96)) {
         this.noiseHit(t, 0.11, 0.34, 1850, 0, true);
         this.tone(t, 190, 0.1, 0.13, { end: 120 });
       }
-      this.noiseHit(
+      if (variation.chance(s % 2 ? 0.25 + variation.density * 0.55 : 0.92)) this.noiseHit(
         t,
         s % 4 === 2 ? 0.085 : 0.026,
         s % 2 === 0 ? 0.085 : 0.04,
         7500,
         s % 2 ? -0.25 : 0.25,
       );
-      const note = bassLine[s];
-      if (note !== null) {
-        const f = 440 * 2 ** ((26 + note - 69) / 12);
+      let note = bassLine[s];
+      if (note === null && variation.chance(variation.density * 0.16)) note = variation.choose(7, 10);
+      if (note !== null && variation.chance(s % 4 === 0 ? 0.96 : 0.68)) {
+        if (s % 4 !== 0) note = variation.choose(note, note === 12 ? 7 : 12);
+        const f = 440 * 2 ** ((modalNote(26 + note, phase, variation.rng) - 69) / 12);
         this.tone(t + 0.016, f, s % 4 === 0 ? 0.24 : 0.13, 0.32, { drive: true });
         this.tone(t + 0.016, f * 2, 0.14, 0.055, { type: "triangle" });
+      }
+      // A second, bell-like disco family enters gradually, one probabilistic note at a time.
+      if (s % 2 === 1 && variation.chance(phase.familyMix * (0.16 + variation.density * 0.2))) {
+        const phrase = [0, 7, 12, 9, 7, 4, 2];
+        const midi = modalNote(62 + phrase[Math.floor(this.step / 2) % phrase.length], phase, variation.rng);
+        this.tone(t, 440 * 2 ** ((midi - 69) / 12), 0.23, 0.055, { type: "triangle" });
       }
       this.next += tick;
       this.step++;
@@ -200,11 +216,8 @@ export class CombatAudio {
         this.voice.word(
           word.word,
           time,
-          ((words[this.chantIndex + 1]?.beat ?? CHANT_BEATS) -
-            word.beat) *
-            beat *
-            0.86,
-          word.note,
+          Math.min(0.85, (words[this.chantIndex + 1]?.beat ?? CHANT_BEATS) - word.beat) * beat * 0.86,
+          this.variation ? modalNote(word.note, opusAt(time - this.opusOrigin()), this.variation.rng) : word.note,
         );
       this.chantIndex++;
       if (this.chantIndex === words.length) {

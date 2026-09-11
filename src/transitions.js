@@ -27,6 +27,9 @@ export class VoxelTransitions {
       world.material,
       this.capacity,
     );
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+    this.mesh.customDepthMaterial = world.depthMaterial;
     this.mesh.geometry.setAttribute(
       "instanceRoot",
       new THREE.InstancedBufferAttribute(

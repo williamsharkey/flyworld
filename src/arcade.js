@@ -176,15 +176,16 @@ export class Arcade {
       }
       const survivors = [];
       for (const shot of this.shots) {
+        const flightDt = Math.min(dt, shot.life);
         shot.life -= dt;
-        if (shot.life <= 0) continue;
+        if (flightDt <= 0) continue;
         if (shot.target && !(shot.target.deadUntil > w.simTime)) {
           const a = shot.target,
             du = delta(a.u + a.vu * 0.1, shot.u, WORLD.length),
             dv = delta(a.v + a.vv * 0.1, shot.v, WORLD.width),
             dy = a.altitude - shot.y,
             d = Math.hypot(du, dv, dy) || 1;
-          const turn = 1 - Math.exp(-dt * 2.2);
+          const turn = 1 - Math.exp(-flightDt * 2.2);
           shot.du += (du / d - shot.du) * turn;
           shot.dv += (dv / d - shot.dv) * turn;
           shot.dy += (dy / d - shot.dy) * turn;
@@ -194,9 +195,9 @@ export class Arcade {
           shot.dy /= n;
         }
         const end = {
-          u: wrap(shot.u + shot.du * 48 * dt, WORLD.length),
-          v: wrap(shot.v + shot.dv * 48 * dt, WORLD.width),
-          y: shot.y + shot.dy * 48 * dt,
+          u: wrap(shot.u + shot.du * 48 * flightDt, WORLD.length),
+          v: wrap(shot.v + shot.dv * 48 * flightDt, WORLD.width),
+          y: shot.y + shot.dy * 48 * flightDt,
         };
         let hit = w.collisions.cast(shot, end, 0.18, w.simTime);
         for (const a of w.fauna.agents) {
@@ -236,7 +237,7 @@ export class Arcade {
           continue;
         }
         Object.assign(shot, end);
-        survivors.push(shot);
+        if (shot.life > 0) survivors.push(shot);
       }
       this.shots = survivors;
       // Debris uses real seconds so the explosion remains readable at every flight speed.

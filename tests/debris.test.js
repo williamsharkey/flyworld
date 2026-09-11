@@ -78,3 +78,15 @@ test("chant waits twelve active seconds before scheduling any syllable", () => {
   c.scheduleChant(c.chantOrigin - 0.1);
   assert.ok(words > 0);
 });
+
+test('a projectile still hits along its remaining path when a slow frame outlasts its lifetime', async()=>{
+ const {Arcade}=await import('../src/arcade.js');
+ const arcade=Object.create(Arcade.prototype), field=new CollisionField();
+ field.replace('wall',[{u:20,v:10,y:10,su:1,sv:4,sy:4,kind:1}]);
+ const world={u:0,v:10,simTime:4,collisions:field,fauna:{agents:[]},height:()=>0,project:()=>({x:0,y:0,z:0})};
+ Object.assign(arcade,{world,cooldown:0,held:false,queued:0,shots:[{u:0,v:10,y:10,du:1,dv:0,dy:0,life:2.5}],fragments:[],blasts:[],mesh:{count:0,instanceMatrix:{}}, render:()=>{}});
+ let hit=null;arcade.explode=p=>{hit=p;};arcade.draw=()=>{};
+ arcade.update(4,.25);
+ assert.ok(hit && hit.u>19 && hit.u<21);
+ assert.equal(arcade.shots.length,0);
+});

@@ -1,3 +1,6 @@
+import { holdNow } from "./audio-param.js";
+import { MusicEvolution, QUIET_MUSIC_GAIN } from "./music-evolution.js";
+import { opusAt } from "./opus.js";
 import { CombatAudio } from "./combat-audio.js";
 import { Ambience } from "./ambience.js";
 import { SCORE, scoreEvents } from "./score.js";
@@ -9,8 +12,11 @@ export class DreamSynth {
     this.enabled = true;
     this.volume = 0.5;
     this.paused = false;
-    this.events = scoreEvents();
+    this.evolution = new MusicEvolution(Math.floor(Math.random() * 2 ** 32));
+    this.events = scoreEvents(this.evolution);
     this.scheduled = 0;
+    this.drumEvolution = new MusicEvolution(31337);
+    this.pulse = 0;
   }
   async init() {
     if (this.ctx) return;
@@ -24,8 +30,9 @@ export class DreamSynth {
     this.master.connect(limiter).connect(ctx.destination);
     this.ambience = new Ambience(ctx, this.master);
     this.musicGain = ctx.createGain();
+    this.musicGain.gain.value = QUIET_MUSIC_GAIN;
     this.musicGain.connect(this.master);
-    this.combat = new CombatAudio(ctx, this.master, this.musicGain);
+    this.combat = new CombatAudio(ctx, this.master, this.musicGain, () => this.origin ?? ctx.currentTime);
     this.bus = ctx.createGain();
     this.bus.connect(this.musicGain);
     const reverb = ctx.createConvolver(),
@@ -86,6 +93,7 @@ export class DreamSynth {
     // Start the score only when audio actually unlocks. Keep a generous buffer
     // for terrain rebuilds, and recover sustained notes after a delayed timer.
     if (this.origin === null) this.origin = this.ctx.currentTime + 0.12;
+    if (this.combat) this.scheduleDisco();
     const beatSeconds = 60 / SCORE.bpm;
     while (true) {
       const event = this.events[this.eventIndex],
@@ -100,7 +108,34 @@ export class DreamSynth {
       if (this.eventIndex === this.events.length) {
         this.eventIndex = 0;
         this.loop++;
+        this.events = scoreEvents(this.evolution, this.loop * SCORE.beats * beatSeconds);
       }
+    }
+  }
+  scheduleDisco() {
+    const ctx = this.ctx, tick = 60 / SCORE.bpm / 2;
+    if (this.origin + this.pulse * tick < ctx.currentTime - 0.08)
+      this.pulse = Math.ceil((ctx.currentTime - this.origin) / tick);
+    while (this.origin + this.pulse * tick < ctx.currentTime + 1.2) {
+      const time = this.origin + this.pulse * tick, phase = opusAt(time - this.origin);
+      const kick = this.pulse % 2 === 0;
+      this.drumEvolution.advance(tick);
+      if (this.drumEvolution.chance(kick ? 0.55 + phase.familyMix * 0.4 : 0.25 + phase.familyMix * 0.45)) {
+        const source = kick ? ctx.createOscillator() : ctx.createBufferSource(),
+          filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+        if (kick) {
+          source.frequency.setValueAtTime(115, time);
+          source.frequency.exponentialRampToValueAtTime(47, time + 0.12);
+        } else source.buffer = this.combat.noise;
+        filter.type = kick ? "lowpass" : "highpass"; filter.frequency.value = kick ? 220 : 6200;
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(kick ? 0.065 : 0.018, time + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + (kick ? 0.19 : 0.055));
+        source.connect(filter).connect(gain).connect(this.musicGain);
+        source.start(time); source.stop(time + 0.21);
+        source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
+      }
+      this.pulse++;
     }
   }
   note(event, time, duration) {
@@ -139,7 +174,9 @@ export class DreamSynth {
           : bell
             ? "sine"
             : "triangle";
-      oscillator.frequency.value = 440 * Math.pow(2, (event.note - 69) / 12);
+      const frequency = 440 * Math.pow(2, (event.note - 69) / 12);
+      oscillator.frequency.setValueAtTime(event.glide ? frequency * 0.94 : frequency, time);
+      if (event.glide) oscillator.frequency.exponentialRampToValueAtTime(frequency, time + 0.12);
       oscillator.detune.value = detune;
       oscillator.connect(env);
       oscillator.start(time);
@@ -155,7 +192,8 @@ export class DreamSynth {
   }
   async arm() {
     await this.init();
-    if (this.ctx.state === "running") await this.sync();
+    // Arm the gain even when resume must wait for the first browser gesture.
+    await this.sync();
   }
   environment(world, bias) {
     this.ambience?.update(world, bias);
@@ -173,13 +211,15 @@ export class DreamSynth {
     if (!this.ctx) return;
     const active = this.enabled && !this.paused && !document.hidden;
     if (active) {
-      await this.ctx.resume();
-      this.schedule();
+      holdNow(this.master.gain, this.ctx.currentTime);
       this.master.gain.setTargetAtTime(
         this.volume * 0.85,
         this.ctx.currentTime,
         1.8,
       );
+      await this.ctx.resume();
+      this.error = null;
+      this.schedule();
     } else {
       this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.2);
     }
@@ -219,6 +259,11 @@ export class DreamSynth {
       scheduled: this.scheduled,
       rms,
       volume: this.volume,
+      masterGain: this.master?.gain.value ?? 0,
+      error: this.error ?? null,
+      opus: opusAt(this.ctx ? this.ctx.currentTime - (this.origin ?? this.ctx.currentTime) : 0),
+      quietGain: this.musicGain?.gain.value ?? QUIET_MUSIC_GAIN,
+      environment: this.ambience?.state,
       ambientRms: this.ambience?.rms || 0,
       soundEvents: this.ambience?.events || 0,
       combat: this.combat?.state || {
